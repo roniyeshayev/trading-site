@@ -453,7 +453,7 @@ textarea.paste{width:100%;resize:none;border:1px dashed var(--line);background:v
           <label class="check"><input id="iFvgOn" type="checkbox"> הצג FVG</label>
           <div class="r3">
             <div><label for="iFvgSrc">טיים פריים</label><select id="iFvgSrc"><option value="0">של הגרף</option><option value="60">1m</option><option value="180">3m</option><option value="300">5m</option><option value="900">15m</option><option value="1800">30m</option><option value="3600">1h</option><option value="14400">4h</option></select></div>
-            <div><label for="iFvgMax">כמה להציג מכל צד</label><input id="iFvgMax" class="n" type="number" min="1" step="1"></div>
+            <div><label for="iFvgLen">אורך התיבה (נרות)</label><input id="iFvgLen" class="n" type="number" min="2" step="1"></div>
             <div><label for="iFvgMin">גודל מינימלי (נק׳)</label><input id="iFvgMin" class="n" type="number" min="0" step="0.25"></div>
           </div>
           <label class="check"><input id="iFvgInv" type="checkbox"> הצג IFVG: FVG שנסגר מעברו והתהפך</label>
@@ -1133,7 +1133,7 @@ const SESS_DEF = [
   { id: 'nyl', name: 'NY Lunch', short: 'NYL', from: '12:00', to: '13:00', color: '#F5B000', on: true },
   { id: 'nypm', name: 'NY PM', short: 'NYPM', from: '13:30', to: '16:00', color: '#9B30B5', on: true },
 ];
-const FVG_UP = '#0B9F86', FVG_DN = '#E5383B';
+const FVG_UP = '#2BB59A', FVG_DN = '#E04A5A';
 function sessInstances(P) {
   const defs = S.ind.sess.list, key = P.D.id + '|' + defs.map(d => d.from + d.to + (d.on ? 1 : 0)).join(',');
   if (P.sessCache && P.sessCache.key === key) return P.sessCache.list;
@@ -1189,18 +1189,22 @@ function fvgAll(P, src) {
 }
 function getFVG(P) {
   const o = S.ind.fvg, want = +o.src || 0, src = (want && want >= P.D.base && want % P.D.base === 0) ? want : curTF(P);
-  const { A, list } = fvgAll(P, src), b = A.b2[P.cur], M = P.cur === A.E[b] ? b + 1 : b;
-  const key = `${P.D.id}|${src}|${M}|${o.ifvg}|${o.max}|${o.min}`;
+  const { A, list } = fvgAll(P, src), b = A.b2[P.cur], M = P.cur === A.E[b] ? b + 1 : b;   /* M = source bars already closed */
+  const len = Math.max(2, Math.round(+o.len || 20));
+  const key = `${P.D.id}|${src}|${M}|${o.ifvg}|${len}|${o.min}`;
   if (P.fvgCache && P.fvgCache.key === key) return P.fvgCache.list;
-  const act = [], inv = [];
+  const tAt = i => i < A.m ? A.T[i] : A.T[A.m - 1] + (i - A.m + 1) * src;   /* start time of source bar i, also past the data */
+  const res = [];
   for (const f of list) {
     if (f.i >= M) break;
-    if (f.inv >= M) act.push({ k: f.k, top: f.top, bot: f.bot, t0: A.T[f.i - 1], src });
-    else if (o.ifvg && f.end >= M) inv.push({ k: -f.k, top: f.top, bot: f.bot, t0: A.T[f.inv], src, ifvg: true });
+    const s0 = f.i - 1, seen = f.inv < M;                 /* only what is known at the replay time */
+    const e = seen ? Math.min(f.inv, s0 + len) : s0 + len;
+    res.push({ k: f.k, top: f.top, bot: f.bot, t0: tAt(s0), t1: tAt(e), src });
+    if (o.ifvg && seen && f.inv <= s0 + len) {
+      const e2 = f.end < M ? Math.min(f.end, f.inv + len) : f.inv + len;
+      res.push({ k: -f.k, top: f.top, bot: f.bot, t0: tAt(f.inv), t1: tAt(e2), src, ifvg: true });
+    }
   }
-  inv.sort((a, b) => a.t0 - b.t0);
-  const pick = arr => arr.filter(x => x.k === 1).slice(-o.max).concat(arr.filter(x => x.k === -1).slice(-o.max));
-  const res = pick(act).concat(o.ifvg ? pick(inv) : []);
   P.fvgCache = { key, list: res }; return res;
 }
 function drawInd(P, target) {
@@ -1216,13 +1220,14 @@ function drawInd(P, target) {
     const usedY = [];
     const freeY = yl => { if (usedY.some(u => Math.abs(u - yl) < 11)) return false; usedY.push(yl); return true; };
     if (showFvg) {
+      const xe = t => idxX(P, tToIdx(A, t));                 /* also places the box ends that reach past the last candle */
       for (const f of getFVG(P)) {
+        if (f.t1 < tFrom) continue;
         const yt = y(f.top), yb = y(f.bot); if (bad(yt) || bad(yb)) continue;
-        const xa = f.ifvg ? xt(f.t0) + half : xt(f.t0) - half; if (bad(xa) || xa > ms.width) continue;
+        const xa = xe(f.t0) - half, xb = xe(f.t1) + half; if (bad(xa) || bad(xb) || xa > ms.width || xb < 0) continue;
         const col = f.k === 1 ? FVG_UP : FVG_DN, top = Math.min(yt, yb), hgt = Math.max(1, Math.abs(yb - yt));
-        ctx.fillStyle = alpha(col, f.ifvg ? 0.2 : 0.3); ctx.fillRect(xa, top, ms.width - xa, hgt);
-        if (f.ifvg) { ctx.strokeStyle = alpha(col, 0.95); ctx.setLineDash([4, 3]); ctx.strokeRect(Math.round(xa) + .5, Math.round(top) + .5, Math.round(ms.width - xa), Math.round(hgt)); ctx.setLineDash([]); }
-        const ly = top + Math.max(0, (hgt - 11) / 2); if (hgt >= 9 && freeY(ly)) { const lbl = (f.ifvg ? 'IFVG' : 'FVG') + (f.src !== tf ? ' ' + tfLabel(f.src) : ''), w = ctx.measureText(lbl).width; ctx.fillStyle = '#111111'; ctx.fillText(lbl, ms.width - w - 4, ly); }
+        ctx.fillStyle = alpha(col, f.ifvg ? 0.22 : 0.42); ctx.fillRect(xa, top, xb - xa, hgt);
+        if (f.ifvg) { ctx.strokeStyle = alpha(col, 0.9); ctx.setLineDash([4, 3]); ctx.strokeRect(Math.round(xa) + .5, Math.round(top) + .5, Math.round(xb - xa), Math.round(hgt)); ctx.setLineDash([]); }
       }
     }
     if (showSess) {
@@ -1680,7 +1685,7 @@ async function writeTrade(tr) {
 /* ---------- sessions ---------- */
 function paneCfgFromDs(ds) { const sym = ds ? (INSTR[ds.symbol] ? ds.symbol : 'MNQ') : 'ES'; const p = INSTR[sym]; return { ds: ds ? ds.id : null, sym, pv: p.pv, tick: p.tick, max: p.max }; }
 function defaults() { return { name: 'סשן', panes: [{ ds: null, sym: 'MNQ', pv: 2, tick: .25, max: 40 }, { ds: null, sym: 'ES', pv: 50, tick: .25, max: 4 }], now: 0, tf: 60, tz: IL, active: 0, sync: true, pos: null, pend: null, draw: [[], []], startBal: 50000, risk: 250, rr: 2, comm: 0, autoFlat: true, limits: true, maxL: 2, maxW: 2, winFrom: '16:30', winTo: '17:30', ind: defInd(), magnet: true, toolCol: {}, fib: { ...FIB_DEF, levels: [...FIB_DEF.levels] }, createdAt: Date.now(), updatedAt: Date.now() }; }
-function defInd() { return { sess: { on: true, lines: true, list: SESS_DEF.map(d => ({ ...d })) }, fvg: { on: true, src: 0, ifvg: true, max: 6, min: 0 } }; }
+function defInd() { return { sess: { on: true, lines: true, list: SESS_DEF.map(d => ({ ...d })) }, fvg: { on: true, src: 0, ifvg: true, max: 6, len: 20, min: 0 } }; }
 /* documents from the database come back frozen: copy them before the page mutates anything */
 function normalize(sd0) { const sd = JSON.parse(JSON.stringify(sd0 || {})), b = defaults(), s = { ...b, ...sd }; s.panes = [0, 1].map(i => ({ ...b.panes[i], ...((sd.panes || [])[i] || {}) })); s.draw = [0, 1].map(i => Array.isArray((sd.draw || [])[i]) ? sd.draw[i] : []);
   const di = defInd(), si = sd.ind || {}; s.ind = { sess: { ...di.sess, ...(si.sess || {}) }, fvg: { ...di.fvg, ...(si.fvg || {}) } };
@@ -2143,14 +2148,14 @@ function bindUI() {
   const fillInd = ind => {
     $('#iSessOn').checked = ind.sess.on; $('#iSessLines').checked = ind.sess.lines;
     $('#iSessList').innerHTML = ind.sess.list.map((d, k) => `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><label class="check" style="min-width:120px"><input type="checkbox" data-sk="${k}" ${d.on ? 'checked' : ''}><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${d.color}"></span>${esc(d.name)}</label><input type="time" data-sf="${k}" value="${d.from}" aria-label="${esc(d.name)} מ-"><span class="muted">עד</span><input type="time" data-st="${k}" value="${d.to}" aria-label="${esc(d.name)} עד"></div>`).join('');
-    $('#iFvgOn').checked = ind.fvg.on; $('#iFvgSrc').value = String(ind.fvg.src || 0); $('#iFvgMax').value = ind.fvg.max; $('#iFvgMin').value = ind.fvg.min; $('#iFvgInv').checked = ind.fvg.ifvg;
+    $('#iFvgOn').checked = ind.fvg.on; $('#iFvgSrc').value = String(ind.fvg.src || 0); $('#iFvgLen').value = ind.fvg.len || 20; $('#iFvgMin').value = ind.fvg.min; $('#iFvgInv').checked = ind.fvg.ifvg;
   };
   $('#bInd').onclick = () => { if (!S) return; fillInd(S.ind); $('#dlgInd').showModal(); };
   $('#bIndReset').onclick = () => fillInd(defInd());
   $('#fInd').addEventListener('submit', e => {
     e.preventDefault(); if (!S) return;
     const list = SESS_DEF.map((d, k) => ({ ...d, on: $(`[data-sk="${k}"]`).checked, from: $(`[data-sf="${k}"]`).value || d.from, to: $(`[data-st="${k}"]`).value || d.to }));
-    S.ind = { sess: { on: $('#iSessOn').checked, lines: $('#iSessLines').checked, list }, fvg: { on: $('#iFvgOn').checked, src: +$('#iFvgSrc').value, max: Math.max(1, Math.floor(num($('#iFvgMax').value) || 8)), min: Math.max(0, num($('#iFvgMin').value) || 0), ifvg: $('#iFvgInv').checked } };
+    S.ind = { sess: { on: $('#iSessOn').checked, lines: $('#iSessLines').checked, list }, fvg: { on: $('#iFvgOn').checked, src: +$('#iFvgSrc').value, max: S.ind.fvg.max || 6, len: Math.max(2, Math.floor(num($('#iFvgLen').value) || 20)), min: Math.max(0, num($('#iFvgMin').value) || 0), ifvg: $('#iFvgInv').checked } };
     $('#dlgInd').close(); syncControls(); redrawInd(); queueSave(0);
   });
   $('#tzSeg').onclick = e => { const b = e.target.closest('button[data-tz]'); if (!b || !S) return; S.tz = b.dataset.tz; syncControls(); renderAllPanes(true); renderLive(); renderTrades(); queueSave(); };
