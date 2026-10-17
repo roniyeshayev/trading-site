@@ -21,7 +21,7 @@ label{display:block;font-weight:600;margin-bottom:8px}
 <body>
 <div class="wrap">
   <h1>העברת נתונים</h1>
-  <p>דף חד-פעמי להעברת הנתונים מהגרסה הקודמת. קבצי נתונים (‎.txt) עולים לאחסון הפרטי, וקובץ docs.json נכנס למסד הנתונים.</p>
+  <p>דף חד-פעמי להעברת הנתונים מהגרסה הקודמת. קבצי נתונים (‎.txt) נשמרים במסד הנתונים הפרטי, וקובץ docs.json נכנס למסד הנתונים.</p>
   <div class="box"><label for="files">קבצים</label><input id="files" type="file" multiple></div>
   <div id="log" aria-live="polite"></div>
 </div>
@@ -40,7 +40,7 @@ label{display:block;font-weight:600;margin-bottom:8px}
           log('docs: ' + rows.length + ' saved');
         } else {
           const id = f.name.replace(/\.txt$/, '');
-          const { error } = await sb.storage.from('assets').upload(uid + '/' + id, f, { contentType: 'text/plain', upsert: true }); if (error) throw error;
+          const { error } = await sb.from('blobs').upsert({ owner: uid, id, content: await f.text() }); if (error) throw error;
           log(id + ': ' + f.size + ' bytes uploaded');
         }
         window.__importDone++;

@@ -94,16 +94,16 @@
   }
   const db = { collection: (p) => Col(p), doc: (p) => { const i = p.lastIndexOf('/'); return Doc(p.slice(0, i), p.slice(i + 1)); } };
 
-  /* ---------- files (market data) in a private bucket, one folder per user ---------- */
-  const BUCKET = 'assets';
+  /* ---------- files (market data): compressed text rows in an owner-only table ---------- */
   const assets = {
     async upload(blob, opts) {
       await ready; const id = 'a' + rid();
-      const { error } = await sb.storage.from(BUCKET).upload(uid + '/' + id, blob, { contentType: (opts && opts.type) || blob.type || 'application/octet-stream', upsert: true });
+      const content = typeof blob === 'string' ? blob : await blob.text();
+      const { error } = await sb.from('blobs').upsert({ owner: uid, id, content });
       if (error) throw wrap(error);
       return { id, url: '/_blob/' + id };
     },
-    async delete(id) { await ready; const { error } = await sb.storage.from(BUCKET).remove([uid + '/' + id]); if (error) throw wrap(error); }
+    async delete(id) { await ready; const { error } = await sb.from('blobs').delete().eq('id', id); if (error) throw wrap(error); }
   };
   /* the pages read their files as fetch('/_blob/<id>') */
   const nativeFetch = window.fetch.bind(window);
@@ -111,7 +111,8 @@
     const s = typeof u === 'string' ? u : (u && u.url) || '';
     const k = s.split('/_blob/')[1];
     if (!k) return nativeFetch(u, o);
-    return ready.then(() => sb.storage.from(BUCKET).download(uid + '/' + decodeURIComponent(k))).then(({ data, error }) => error ? new Response('', { status: 404 }) : new Response(data));
+    return ready.then(() => sb.from('blobs').select('content').eq('id', decodeURIComponent(k)).maybeSingle())
+      .then(({ data, error }) => (error || !data) ? new Response('', { status: 404 }) : new Response(data.content, { headers: { 'content-type': 'text/plain' } }));
   };
 
   const downloads = {
