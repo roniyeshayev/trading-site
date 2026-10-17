@@ -1,0 +1,1196 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{box-sizing:border-box}html,body{margin:0;padding:0}body{font:14px -apple-system,BlinkMacSystemFont,sans-serif}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="store.js"></script>
+</head>
+<body>
+<title>יומן מסחר</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Hebrew:wght@400;500;600;700&family=Rubik:wght@500;600;700&display=swap">
+<style>
+/* Layout: a trading-desk ledger. Filters, then the four numbers that matter, equity curve beside day stats,
+   month P&L calendar beside setup/symbol breakdown, then the full trade log. RTL page; every figure set LTR in mono. */
+:root{
+  --bg:#F1F3F7;
+  --surface:#FFFFFF;
+  --surface-2:#E8ECF3;
+  --line:#D7DDE8;
+  --fg:#101624;
+  --muted:#596377;
+  --accent:#2A54D2;
+  --accent-ink:#FFFFFF;
+  --accent-soft:#E1E8FB;
+  --win:#0E7A57;
+  --win-soft:#D7F0E5;
+  --loss:#C1353A;
+  --loss-soft:#F9DEDF;
+  --flat:#8A93A6;
+  --shadow:0 1px 2px rgba(16,22,36,.05),0 8px 24px -16px rgba(16,22,36,.22);
+  --overlay:rgba(16,22,36,.42);
+  --font-display:"Rubik","IBM Plex Sans Hebrew",system-ui,sans-serif;
+  --font-body:"IBM Plex Sans Hebrew","Rubik",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+  --font-data:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D121B; --surface:#151C29; --surface-2:#1C2434; --line:#283246; --fg:#E7EBF3; --muted:#93A0B7;
+    --accent:#7F9DFF; --accent-ink:#0D121B; --accent-soft:#1E2847;
+    --win:#3CC98F; --win-soft:#12301F; --loss:#FF6E6E; --loss-soft:#3A1A1D; --flat:#7C869A;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 28px -16px rgba(0,0,0,.6); --overlay:rgba(4,7,12,.66);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D121B; --surface:#151C29; --surface-2:#1C2434; --line:#283246; --fg:#E7EBF3; --muted:#93A0B7;
+  --accent:#7F9DFF; --accent-ink:#0D121B; --accent-soft:#1E2847;
+  --win:#3CC98F; --win-soft:#12301F; --loss:#FF6E6E; --loss-soft:#3A1A1D; --flat:#7C869A;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 28px -16px rgba(0,0,0,.6); --overlay:rgba(4,7,12,.66);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.5;direction:rtl}
+button,input,select,textarea{font:inherit;color:inherit}
+.app{max-width:1240px;margin:0 auto;padding-inline:20px;padding-block:24px 64px;display:flex;flex-direction:column;gap:18px}
+.num{direction:ltr;unicode-bidi:isolate;font-family:var(--font-data);font-variant-numeric:tabular-nums}
+.pos{color:var(--win)} .neg{color:var(--loss)} .zero{color:var(--muted)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Header */
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.brand h1{font-family:var(--font-display);font-weight:700;font-size:30px;line-height:1.1;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.brand p{margin:4px 0 0;color:var(--muted);font-size:14px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid transparent;border-radius:10px;padding:10px 16px;font-weight:600;cursor:pointer;background:var(--surface-2);color:var(--fg);transition:background .15s,border-color .15s,transform .05s}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.primary{background:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover:not(:disabled){filter:brightness(1.07)}
+.btn.ghost{background:transparent;border-color:var(--line)}
+.btn.ghost:hover:not(:disabled){background:var(--surface-2)}
+.btn.danger{background:transparent;border-color:var(--loss);color:var(--loss)}
+.btn.danger.armed{background:var(--loss);color:var(--surface)}
+.btn.small{padding:6px 12px;font-size:13px;border-radius:8px}
+.btn svg{width:18px;height:18px}
+
+/* Notices */
+.notice{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:12px 16px;font-size:14px}
+.notice.sample{border-color:var(--accent);background:var(--accent-soft)}
+.notice.warn{border-color:var(--loss);background:var(--loss-soft)}
+
+/* Toolbar */
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.seg{display:inline-flex;background:var(--surface-2);border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;padding:7px 14px;border-radius:8px;font-size:14px;font-weight:500;color:var(--muted);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--fg);box-shadow:var(--shadow)}
+.filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--fg);border-radius:999px;padding:5px 6px 5px 12px;font-size:13px}
+.chip button{border:0;background:var(--surface);border-radius:999px;width:22px;height:22px;cursor:pointer;display:grid;place-items:center;color:var(--muted)}
+select.field-sm{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:14px;min-width:0}
+
+/* KPI strip */
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.t-label{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.04em}
+.t-value{font-size:28px;font-weight:600;line-height:1.15}
+.t-value.hero{font-family:var(--font-data);font-size:32px}
+.t-sub{font-size:13px;color:var(--muted)}
+.tile-ring{flex-direction:row;align-items:center;justify-content:space-between;gap:12px}
+.tile-ring .ring{flex:none;width:68px;height:68px}
+.ring-track{fill:none;stroke:var(--surface-2);stroke-width:8}
+.ring-win{fill:none;stroke:var(--win);stroke-width:8}
+.ring-loss{fill:none;stroke:var(--loss);stroke-width:8;opacity:.75}
+.wl-bar{display:flex;height:8px;border-radius:99px;overflow:hidden;background:var(--surface-2);margin-top:4px}
+.wl-bar span{display:block;height:100%}
+.wl-bar .w{background:var(--win)} .wl-bar .l{background:var(--loss);opacity:.8}
+.wl-rows{display:flex;justify-content:space-between;gap:8px;font-size:15px}
+
+/* Panels */
+.split{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:14px;align-items:start}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;min-width:0}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.panel-head h2{font-family:var(--font-display);font-size:17px;font-weight:600;margin:0}
+.panel-head .meta{font-size:13px;color:var(--muted)}
+.chart{direction:ltr;width:100%;min-height:200px;position:relative}
+.chart svg{display:block}
+.chart-empty{min-height:200px;display:grid;place-items:center;text-align:center;color:var(--muted);font-size:14px;border:1px dashed var(--line);border-radius:10px;direction:rtl;padding:16px}
+.eq-grid{stroke:var(--line);stroke-width:1}
+.eq-zero{stroke:var(--muted);stroke-width:1;stroke-dasharray:3 4}
+.eq-line{fill:none;stroke:var(--accent);stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round}
+.a-up{fill:var(--win-soft)} .a-dn{fill:var(--loss-soft)}
+.eq-tick{fill:var(--muted);font-family:var(--font-data);font-size:11px}
+.eq-dot{fill:var(--accent);stroke:var(--surface);stroke-width:2.5}
+.eq-end{font-family:var(--font-data);font-size:12px;font-weight:600}
+.eq-end.pos{fill:var(--win)} .eq-end.neg{fill:var(--loss)} .eq-end.zero{fill:var(--muted)}
+
+.stat-list{display:flex;flex-direction:column}
+.stat-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.stat-row:last-child{border-bottom:0}
+.stat-row .k{color:var(--muted);font-size:14px}
+.stat-row .v{font-weight:600;font-size:15px;text-align:left}
+.stat-row .v small{display:block;font-weight:400;font-size:12px;color:var(--muted);font-family:var(--font-body);direction:rtl;text-align:left}
+
+/* Calendar */
+.cal-nav{display:flex;align-items:center;gap:6px}
+.icon-btn{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;cursor:pointer;color:var(--fg)}
+.icon-btn:hover{background:var(--surface-2)}
+.icon-btn svg{width:16px;height:16px}
+.cal-title{font-family:var(--font-display);font-weight:600;font-size:17px;min-width:9em;text-align:center}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.cal .dow{font-size:12px;color:var(--muted);text-align:center;font-weight:600;padding-bottom:2px}
+.day{min-height:74px;border-radius:9px;border:1px solid var(--line);padding:6px 7px;display:flex;flex-direction:column;justify-content:space-between;gap:2px;background:var(--surface);min-width:0;text-align:start;cursor:default}
+.day.blank{border-color:transparent;background:transparent}
+.day.has{cursor:pointer}
+.day.has:hover{outline:2px solid var(--accent);outline-offset:-1px}
+.day.today .dnum{background:var(--accent);color:var(--accent-ink);border-radius:6px;padding:0 5px}
+.day.selected{outline:2px solid var(--fg);outline-offset:-1px}
+.dnum{font-size:12px;color:var(--muted);font-family:var(--font-data);align-self:flex-start}
+.dp{font-size:13px;font-weight:600;font-family:var(--font-data);direction:ltr;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dc{font-size:11px;color:var(--muted)}
+.cal-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:10px}
+.day.off{background:var(--surface-2);border-style:dashed}
+.drow{display:flex;justify-content:space-between;align-items:center;gap:4px;width:100%}
+.note-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);flex:none}
+.daynote{border:1px solid var(--line);background:var(--surface-2);border-radius:12px;padding:12px 14px;margin-bottom:12px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.daynote .t{font-weight:600;font-size:14px}
+.daynote p{margin:4px 0 0;font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+.top-actions{display:flex;gap:10px;flex-wrap:wrap}
+.hint-p{margin:0;color:var(--muted);font-size:13px}
+
+.bk-list{display:flex;flex-direction:column;gap:12px}
+.bk-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:baseline}
+.bk-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bk-meta{font-size:12px;color:var(--muted);grid-column:1/2}
+.bk-bar{grid-column:1/3;height:6px;background:var(--surface-2);border-radius:99px;overflow:hidden;display:flex}
+.bk-bar span{height:100%;border-radius:99px}
+.bk-net{grid-row:1/3;grid-column:2/3;font-weight:600;align-self:center}
+
+/* Trades table */
+.table-wrap{overflow-x:auto;margin-inline:-18px;padding-inline:18px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{font-size:12px;font-weight:600;color:var(--muted);text-align:start;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;letter-spacing:.03em}
+td{padding:11px 10px;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:middle}
+tbody tr{cursor:pointer}
+tbody tr:hover td{background:var(--surface-2)}
+td.r,th.r{text-align:left}
+.sym{font-weight:600;font-family:var(--font-data)}
+.acct{font-size:12px;color:var(--muted)}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px;font-family:var(--font-data)}
+.pill.long{background:var(--win-soft);color:var(--win)}
+.pill.short{background:var(--loss-soft);color:var(--loss)}
+.tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:6px;background:var(--surface-2);color:var(--fg);max-width:14em;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
+.plan-yes{color:var(--win);font-weight:600} .plan-no{color:var(--loss);font-weight:600}
+.sample-mark{font-size:11px;color:var(--accent);font-weight:600;margin-inline-start:6px}
+.empty{padding:36px 16px;text-align:center;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:12px}
+.empty strong{color:var(--fg);font-family:var(--font-display);font-size:18px;font-weight:600}
+.more{display:flex;justify-content:center;margin-top:12px}
+
+/* Modal */
+.overlay{position:fixed;inset:0;background:var(--overlay);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+.modal{background:var(--surface);border-radius:16px;width:100%;max-width:620px;max-height:calc(100% - 8px);overflow-y:auto;box-shadow:var(--shadow);border:1px solid var(--line)}
+.modal-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px 6px}
+.modal-head h2{font-family:var(--font-display);margin:0;font-size:20px;font-weight:600}
+.modal form{padding:8px 20px 20px;display:flex;flex-direction:column;gap:14px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.fld{display:flex;flex-direction:column;gap:5px;min-width:0}
+.fld label,.fld .lbl{font-size:13px;font-weight:600;color:var(--muted)}
+.fld input,.fld select,.fld textarea{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-size:15px;width:100%;min-width:0}
+.fld input[dir="ltr"]{text-align:right;font-family:var(--font-data)}
+.fld textarea{min-height:76px;resize:vertical}
+.fld .hint{font-size:12px;color:var(--muted)}
+.side-seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.side-seg input{position:absolute;opacity:0;pointer-events:none}
+.side-seg label{display:flex;align-items:center;justify-content:center;gap:6px;border:1.5px solid var(--line);border-radius:10px;padding:10px;cursor:pointer;font-weight:600;color:var(--muted)}
+.side-seg input:focus-visible+label{outline:2px solid var(--accent);outline-offset:2px}
+.side-seg input.l:checked+label{border-color:var(--win);color:var(--win);background:var(--win-soft)}
+.side-seg input.s:checked+label{border-color:var(--loss);color:var(--loss);background:var(--loss-soft)}
+.side-seg input.y:checked+label{border-color:var(--win);color:var(--win);background:var(--win-soft)}
+.side-seg input.n:checked+label{border-color:var(--loss);color:var(--loss);background:var(--loss-soft)}
+.check{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
+.check input{width:18px;height:18px;accent-color:var(--accent)}
+.preview{background:var(--surface-2);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.preview .big{font-size:24px;font-weight:600}
+.preview .calc{font-size:12px;color:var(--muted)}
+.form-err{color:var(--loss);font-size:14px;font-weight:500}
+.form-actions{display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap;align-items:center}
+.form-actions .grp{display:flex;gap:10px}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 18px;border-radius:10px;font-size:14px;font-weight:500;z-index:60;box-shadow:var(--shadow)}
+.toast.err{background:var(--loss);color:var(--surface)}
+
+@media (max-width:900px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .split{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:640px){
+  .app{padding-inline:16px;padding-block:18px 56px;gap:14px}
+  .brand h1{font-size:26px}
+  .t-value{font-size:22px} .t-value.hero{font-size:24px}
+  .tile{padding:14px}
+  .tile-ring .ring{width:52px;height:52px}
+  .panel{padding:14px}
+  .table-wrap{margin-inline:-14px;padding-inline:14px}
+  .day{min-height:52px;padding:4px 5px}
+  .dc{display:none}
+  .dp{font-size:10.5px;letter-spacing:-.02em}
+  .cal{gap:4px}
+  .c-md{display:none}
+  .overlay{align-items:flex-end;padding:0}
+  .modal{border-radius:16px 16px 0 0;max-height:94%;padding-bottom:env(safe-area-inset-bottom,0px)}
+  .modal form,.modal-head{padding-inline:16px}
+}
+@media (max-width:420px){
+  .grid2.st{grid-template-columns:minmax(0,1fr)}
+  .t-value{font-size:20px} .t-value.hero{font-size:21px}
+  .tile-ring .ring{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="app" dir="rtl">
+  <header class="top">
+    <div class="brand">
+      <h1>יומן מסחר</h1>
+      <p id="subline">רושמים כל עסקה, רואים מה עובד.</p>
+    </div>
+    <div class="top-actions">
+    <button class="btn ghost" id="btnDay" type="button">רישום יום</button>
+    <button class="btn primary" id="btnAdd" type="button">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>
+      עסקה חדשה
+    </button>
+    </div>
+  </header>
+
+  <div class="notice" id="statusBar" hidden></div>
+  <div class="notice sample" id="sampleBar" hidden>
+    <span>מוצגות כרגע <b id="sampleCount">0</b> עסקאות לדוגמה כדי שתראה איך היומן עובד. הן לא שלך.</span>
+    <button class="btn small ghost" id="btnClearSamples" type="button">מחק את הדוגמאות</button>
+  </div>
+
+  <div class="toolbar">
+    <div class="seg" id="periodSeg" role="group" aria-label="תקופה">
+      <button type="button" data-p="all" aria-pressed="true">הכול</button>
+      <button type="button" data-p="month" aria-pressed="false">החודש</button>
+      <button type="button" data-p="30" aria-pressed="false">30 יום</button>
+      <button type="button" data-p="week" aria-pressed="false">7 ימים</button>
+    </div>
+    <div class="filters">
+      <span class="chip" id="dayChip" hidden><span id="dayChipText"></span><button type="button" id="dayChipX" aria-label="נקה סינון יום">✕</button></span>
+      <select class="field-sm" id="acctFilter" aria-label="חשבון" hidden></select>
+    </div>
+  </div>
+
+  <section class="kpis" aria-label="סיכום ביצועים">
+    <div class="tile">
+      <div class="t-label">רווח / הפסד נטו</div>
+      <div class="t-value hero num" id="kNet">—</div>
+      <div class="t-sub" id="kNetSub">אין עדיין עסקאות</div>
+    </div>
+    <div class="tile tile-ring">
+      <div style="min-width:0">
+        <div class="t-label">אחוז הצלחה · Win rate</div>
+        <div class="t-value num" id="kWin">—</div>
+        <div class="t-sub" id="kWinSub">0 רווח · 0 הפסד</div>
+      </div>
+      <svg class="ring" id="kRing" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="26" class="ring-track"/></svg>
+    </div>
+    <div class="tile">
+      <div class="t-label">Profit Factor</div>
+      <div class="t-value num" id="kPf">—</div>
+      <div class="t-sub" id="kPfSub">תוחלת לעסקה: —</div>
+    </div>
+    <div class="tile">
+      <div class="t-label">רווח ממוצע מול הפסד ממוצע</div>
+      <div class="wl-rows"><span class="num pos" id="kAvgW">—</span><span class="num neg" id="kAvgL">—</span></div>
+      <div class="wl-bar" aria-hidden="true"><span class="w" id="kBarW" style="width:50%"></span><span class="l" id="kBarL" style="width:50%"></span></div>
+      <div class="t-sub" id="kRR">יחס: —</div>
+    </div>
+  </section>
+
+  <section class="split">
+    <div class="panel">
+      <div class="panel-head"><h2>עקומת הון</h2><span class="meta" id="eqMeta">רווח מצטבר לפי עסקה</span></div>
+      <div class="chart" id="equityChart"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>ימי מסחר</h2><span class="meta" id="daysMeta"></span></div>
+      <div class="stat-list" id="dayStats"></div>
+    </div>
+  </section>
+
+  <section class="split">
+    <div class="panel">
+      <div class="panel-head">
+        <h2>לוח רווח יומי</h2>
+        <div class="cal-nav">
+          <button class="icon-btn" id="calPrev" type="button" aria-label="חודש קודם"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg></button>
+          <span class="cal-title" id="calTitle"></span>
+          <button class="icon-btn" id="calNext" type="button" aria-label="חודש הבא"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3L5 8l5 5"/></svg></button>
+        </div>
+      </div>
+      <div class="cal" id="cal"></div>
+      <div class="cal-legend"><span id="calSum"></span><span>לחיצה על יום מציגה את העסקאות שלו · מקווקו = יום בלי עסקאות</span></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>פילוח</h2>
+        <div class="seg" id="bkSeg" role="group" aria-label="פילוח לפי">
+          <button type="button" data-b="setup" aria-pressed="true">סטאפ</button>
+          <button type="button" data-b="symbol" aria-pressed="false">נכס</button>
+          <button type="button" data-b="side" aria-pressed="false">כיוון</button>
+        </div>
+      </div>
+      <div class="bk-list" id="bkList"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>העסקאות שלי</h2><span class="meta" id="tradesMeta"></span></div>
+    <div id="tradesBody"></div>
+  </section>
+</div>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="formTitle">
+    <div class="modal-head">
+      <h2 id="formTitle">עסקה חדשה</h2>
+      <button class="icon-btn" type="button" id="btnClose" aria-label="סגור"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+    </div>
+    <form id="tradeForm" novalidate>
+      <div class="grid2">
+        <div class="fld"><label for="fDate">תאריך</label><input id="fDate" type="date" dir="ltr" required></div>
+        <div class="fld"><label for="fTime">שעה</label><input id="fTime" type="time" dir="ltr"></div>
+      </div>
+      <div class="grid2">
+        <div class="fld"><label for="fMarket">שוק</label>
+          <select id="fMarket">
+            <option value="futures">חוזים עתידיים</option>
+            <option value="stocks">מניות</option>
+            <option value="crypto">קריפטו</option>
+            <option value="forex">פורקס</option>
+            <option value="options">אופציות</option>
+            <option value="other">אחר</option>
+          </select>
+        </div>
+        <div class="fld"><label for="fSymbol">נכס</label><input id="fSymbol" type="text" dir="ltr" list="symList" autocomplete="off" placeholder="MNQ, AAPL, BTC…" required><datalist id="symList"></datalist></div>
+      </div>
+      <div class="fld">
+        <span class="lbl">כיוון</span>
+        <div class="side-seg">
+          <input type="radio" name="side" id="sideL" value="long" class="l" checked><label for="sideL">Long · קנייה</label>
+          <input type="radio" name="side" id="sideS" value="short" class="s"><label for="sideS">Short · מכירה</label>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="fld"><label for="fQty" id="qtyLabel">כמות חוזים</label><input id="fQty" type="number" dir="ltr" min="0" step="any" inputmode="decimal"></div>
+        <div class="fld"><label for="fMult" id="multLabel">$ לנקודה</label><input id="fMult" type="number" dir="ltr" min="0" step="any" inputmode="decimal"><span class="hint" id="multHint"></span></div>
+      </div>
+      <div class="grid2">
+        <div class="fld"><label for="fEntry">מחיר כניסה</label><input id="fEntry" type="number" dir="ltr" step="any" inputmode="decimal"></div>
+        <div class="fld"><label for="fExit">מחיר יציאה</label><input id="fExit" type="number" dir="ltr" step="any" inputmode="decimal"></div>
+      </div>
+      <div class="grid2">
+        <div class="fld"><label for="fFees">עמלות ($)</label><input id="fFees" type="number" dir="ltr" min="0" step="any" inputmode="decimal" placeholder="0"></div>
+        <div class="fld"><label for="fAccount">חשבון</label><input id="fAccount" type="text" list="acctList" autocomplete="off" placeholder="לא חובה"><datalist id="acctList"></datalist></div>
+      </div>
+      <label class="check"><input type="checkbox" id="fManual"> הזן רווח/הפסד ידנית (לפורקס, אופציות מורכבות וכו׳)</label>
+      <div class="fld" id="manualRow" hidden><label for="fPnl">רווח/הפסד נטו ($)</label><input id="fPnl" type="number" dir="ltr" step="any" inputmode="decimal" placeholder="למשל -120 או 350"></div>
+      <div class="preview">
+        <div><div class="t-label">רווח/הפסד נטו</div><div class="big num" id="pvPnl">—</div></div>
+        <div class="calc num" id="pvCalc"></div>
+      </div>
+      <div class="grid2 st">
+        <div class="fld"><label for="fSetup">סטאפ / אסטרטגיה</label><input id="fSetup" type="text" list="setupList" autocomplete="off" placeholder="למשל פריצה, FVG, ריטסט"><datalist id="setupList"></datalist></div>
+        <div class="fld">
+          <span class="lbl">עמדתי בתוכנית?</span>
+          <div class="side-seg">
+            <input type="radio" name="plan" id="planY" value="yes" class="y"><label for="planY">כן</label>
+            <input type="radio" name="plan" id="planN" value="no" class="n"><label for="planN">לא</label>
+          </div>
+        </div>
+      </div>
+      <div class="fld"><label for="fNotes">הערות</label><textarea id="fNotes" placeholder="למה נכנסתי, מה עבד, מה הייתי עושה אחרת"></textarea></div>
+      <div class="form-err" id="formErr" hidden></div>
+      <div class="form-actions">
+        <div class="grp">
+          <button class="btn primary" type="submit" id="btnSave">שמור עסקה</button>
+          <button class="btn ghost" type="button" id="btnCancel">ביטול</button>
+        </div>
+        <button class="btn danger" type="button" id="btnDelete" hidden>מחק עסקה</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="overlay" id="dayOverlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dayTitle">
+    <div class="modal-head">
+      <h2 id="dayTitle">רישום יום</h2>
+      <button class="icon-btn" type="button" id="dayClose" aria-label="סגור"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+    </div>
+    <form id="dayForm" novalidate>
+      <p class="hint-p">לימים בלי עסקאות, או להערה על יום מסחר. לא משפיע על הסטטיסטיקות של העסקאות.</p>
+      <div class="grid2">
+        <div class="fld"><label for="dDate">תאריך</label><input id="dDate" type="date" dir="ltr" required></div>
+        <div class="fld"><label for="dAccount">חשבון</label><input id="dAccount" type="text" list="acctList" autocomplete="off" placeholder="לא חובה"></div>
+      </div>
+      <div class="fld"><label for="dNote">מה היה היום</label><textarea id="dNote" placeholder="למשל: לא היה סטאפ לפי התוכנית, חיכיתי"></textarea></div>
+      <div class="form-err" id="dayErr" hidden></div>
+      <div class="form-actions">
+        <div class="grp">
+          <button class="btn primary" type="submit" id="daySave">שמור יום</button>
+          <button class="btn ghost" type="button" id="dayCancel">ביטול</button>
+        </div>
+        <button class="btn danger" type="button" id="dayDelete" hidden>מחק רישום</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(() => {
+  "use strict";
+  const FUT = {MNQ:2, NQ:20, MES:5, ES:50, MYM:0.5, YM:5, M2K:5, RTY:50, MGC:10, GC:100, SIL:1000, SI:5000, MCL:100, CL:1000, M6E:12500, "6E":125000, ZN:1000, ZB:1000};
+  const UNIT = {futures:"כמות חוזים", stocks:"כמות מניות", crypto:"כמות יחידות", forex:"כמות לוטים", options:"כמות חוזים", other:"כמות"};
+  const MULT_LABEL = {futures:"$ לנקודה", stocks:"מכפיל", crypto:"מכפיל", forex:"$ לנקודה", options:"מכפיל (מניות לחוזה)", other:"מכפיל"};
+  const MARKET_NAME = {futures:"חוזים", stocks:"מניות", crypto:"קריפטו", forex:"פורקס", options:"אופציות", other:"אחר"};
+  const DOW = ["א׳","ב׳","ג׳","ד׳","ה׳","ו׳","ש׳"];
+
+  const state = {
+    trades: [], loaded: false, conn: "connecting",
+    period: "all", acct: "", day: null, breakdown: "setup",
+    cal: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    editing: null, showAll: false, curve: [], multTouched: false
+  };
+  let colRef = null, daysRef = null;
+  state.days = [];
+
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const ls = {
+    get(k, d) { try { const v = localStorage.getItem("tj_" + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem("tj_" + k, JSON.stringify(v)); } catch (e) {} }
+  };
+
+  /* ---------- formatting ---------- */
+  const r2 = (v) => Math.round(v * 100) / 100;
+  const r5 = (v) => Math.round(v * 1e5) / 1e5;
+  const num = (v) => { if (v === "" || v == null) return null; const n = Number(v); return isFinite(n) ? n : null; };
+  const sign = (v) => v > 0 ? "+" : v < 0 ? "−" : "";
+  const cls = (v) => v > 0 ? "pos" : v < 0 ? "neg" : "zero";
+  function money(v, dp = 2) {
+    if (v == null || !isFinite(v)) return "—";
+    return sign(v) + "$" + Math.abs(v).toLocaleString("en-US", {minimumFractionDigits: dp, maximumFractionDigits: dp});
+  }
+  function moneyK(v) {
+    const a = Math.abs(v), s = v < 0 ? "−" : "";
+    if (a >= 1000) return s + "$" + (a / 1000).toFixed(a >= 10000 ? 0 : 1).replace(/\.0$/, "") + "k";
+    return s + "$" + Math.round(a);
+  }
+  const pct = (v) => v == null ? "—" : Math.round(v * 100) + "%";
+  function price(v) {
+    if (v == null || v === "") return "—";
+    const n = Number(v); const dec = (String(v).split(".")[1] || "").length;
+    return n.toLocaleString("en-US", {minimumFractionDigits: Math.min(Math.max(dec, 2), 5), maximumFractionDigits: 5});
+  }
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const ymd = (d) => d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+  const parseYmd = (s) => { const [y, m, d] = String(s).split("-").map(Number); return new Date(y, (m || 1) - 1, d || 1); };
+  const dShort = (s) => parseYmd(s).toLocaleDateString("he-IL", {day: "numeric", month: "numeric", year: "2-digit"});
+  const dLong = (s) => parseYmd(s).toLocaleDateString("he-IL", {weekday: "short", day: "numeric", month: "long"});
+  const nowHM = () => { const d = new Date(); return pad2(d.getHours()) + ":" + pad2(d.getMinutes()); };
+
+  /* ---------- data selection ---------- */
+  const sortKey = (t) => (t.date || "") + " " + (t.time || "99:99") + " " + String(t.createdAt || 0).padStart(15, "0");
+  function byAccount(list) { return state.acct ? list.filter((t) => (t.account || "") === state.acct) : list; }
+  function inPeriod(t) {
+    if (state.period === "all") return true;
+    const d = parseYmd(t.date); const now = new Date(); now.setHours(0, 0, 0, 0);
+    if (state.period === "month") return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    const days = state.period === "week" ? 7 : 30;
+    const from = new Date(now); from.setDate(from.getDate() - (days - 1));
+    return d >= from && d <= now;
+  }
+  const scoped = () => byAccount(state.trades).filter(inPeriod).sort((a, b) => sortKey(a) < sortKey(b) ? -1 : 1);
+  const offLabel = (n) => n === 1 ? "יום אחד בלי עסקאות" : `${n} ימים בלי עסקאות`;
+  const acctOk = (x) => !state.acct || (x.account || "") === state.acct;
+  const dayLogsFor = (date) => state.days.filter((d) => d.date === date && acctOk(d));
+  function offDays(filterFn) {
+    const traded = new Set(byAccount(state.trades).map((t) => t.date));
+    return new Set(state.days.filter((d) => acctOk(d) && !traded.has(d.date) && filterFn(d)).map((d) => d.date));
+  }
+
+  function computeStats(list) {
+    let w = 0, l = 0, be = 0, gp = 0, gl = 0;
+    let cum = 0, peak = 0, dd = 0; const curve = [{y: 0, date: null}];
+    const days = new Map();
+    let planY = 0, planN = 0;
+    for (const t of list) {
+      const p = Number(t.pnl) || 0;
+      if (p > 0) { w++; gp += p; } else if (p < 0) { l++; gl += p; } else be++;
+      cum += p; peak = Math.max(peak, cum); dd = Math.min(dd, cum - peak);
+      curve.push({y: r2(cum), date: t.date});
+      days.set(t.date, (days.get(t.date) || 0) + p);
+      if (t.plan === true) planY++; else if (t.plan === false) planN++;
+    }
+    const n = list.length, net = gp + gl;
+    let best = null, worst = null, green = 0;
+    for (const [d, v] of days) {
+      if (v > 0) green++;
+      if (!best || v > best.v) best = {d, v};
+      if (!worst || v < worst.v) worst = {d, v};
+    }
+    return {
+      n, w, l, be, gp, gl, net, curve, dd,
+      winRate: n ? w / n : null,
+      pf: gl < 0 ? gp / Math.abs(gl) : (gp > 0 ? Infinity : null),
+      avgW: w ? gp / w : null, avgL: l ? gl / l : null,
+      exp: n ? net / n : null,
+      days: days.size, green, best, worst,
+      plan: planY + planN ? planY / (planY + planN) : null, planCount: planY + planN
+    };
+  }
+
+  /* ---------- render ---------- */
+  function render() {
+    renderStatus();
+    renderSample();
+    renderAccountFilter();
+    const list = scoped();
+    const s = computeStats(list);
+    state.curve = s.curve;
+    renderKpis(s);
+    renderEquity();
+    renderDays(s);
+    renderCal();
+    renderBreakdown(list);
+    renderTrades();
+    renderSubline();
+    renderDatalists();
+  }
+
+  function renderStatus() {
+    const bar = $("#statusBar");
+    const msgs = {
+      connecting: "טוען את היומן…",
+      offline: "השמירה לא זמינה כרגע. בדוק את החיבור לאינטרנט ורענן את הדף.",
+      private: "היומן הזה פרטי. רק הבעלים שלו יכול לראות ולרשום עסקאות.",
+      error: "החיבור ליומן נקטע. רענן את הדף כדי להמשיך."
+    };
+    const m = msgs[state.conn];
+    bar.hidden = !m;
+    bar.className = "notice" + (state.conn === "connecting" ? "" : " warn");
+    if (m) bar.textContent = m;
+    $("#btnAdd").disabled = state.conn !== "ok";
+    $("#btnDay").disabled = state.conn !== "ok";
+  }
+
+  function renderSample() {
+    const n = state.trades.filter((t) => t.sample).length;
+    $("#sampleBar").hidden = n === 0;
+    $("#sampleCount").textContent = n;
+  }
+
+  function renderAccountFilter() {
+    const sel = $("#acctFilter");
+    const accts = [...new Set(state.trades.concat(state.days).map((t) => t.account || "").filter(Boolean))].sort();
+    sel.hidden = accts.length < 2 && !state.acct;
+    if (state.acct && !accts.includes(state.acct)) state.acct = "";
+    const html = '<option value="">כל החשבונות</option>' + accts.map((a) => `<option value="${esc(a)}"${a === state.acct ? " selected" : ""}>${esc(a)}</option>`).join("");
+    if (sel.innerHTML !== html) sel.innerHTML = html;
+    sel.value = state.acct;
+  }
+
+  function renderSubline() {
+    const total = byAccount(state.trades).length;
+    const off = offDays(() => true).size;
+    $("#subline").textContent = state.loaded && (total || off)
+      ? `${total} עסקאות ביומן` + (off ? " · " + offLabel(off) : "") + (state.acct ? " · " + state.acct : "")
+      : "רושמים כל עסקה, רואים מה עובד.";
+  }
+
+  function renderKpis(s) {
+    const net = $("#kNet");
+    net.textContent = s.n ? money(s.net) : "—";
+    net.className = "t-value hero num " + (s.n ? cls(s.net) : "");
+    $("#kNetSub").textContent = s.n ? `${s.n} עסקאות · ${s.days} ימי מסחר` : (state.trades.length ? "אין עסקאות בתקופה הזו" : "אין עדיין עסקאות");
+    $("#kWin").textContent = pct(s.winRate);
+    $("#kWinSub").textContent = `${s.w} רווח · ${s.l} הפסד` + (s.be ? ` · ${s.be} איפוס` : "");
+    const ring = $("#kRing"); const r = 26, c = 2 * Math.PI * r;
+    let inner = `<circle cx="32" cy="32" r="${r}" class="ring-track"/>`;
+    if (s.n) {
+      const fw = s.w / s.n, fl = s.l / s.n;
+      inner += `<circle cx="32" cy="32" r="${r}" class="ring-loss" stroke-dasharray="${(fl * c).toFixed(2)} ${c.toFixed(2)}" stroke-dashoffset="${(-fw * c).toFixed(2)}" transform="rotate(-90 32 32)"/>`;
+      inner += `<circle cx="32" cy="32" r="${r}" class="ring-win" stroke-dasharray="${(fw * c).toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 32 32)"/>`;
+    }
+    ring.innerHTML = inner;
+    $("#kPf").textContent = s.pf == null ? "—" : (s.pf === Infinity ? "∞" : s.pf.toFixed(2));
+    $("#kPf").className = "t-value num " + (s.pf == null ? "" : s.pf >= 1 ? "pos" : "neg");
+    $("#kPfSub").innerHTML = `תוחלת לעסקה: <span class="num ${s.exp == null ? "" : cls(s.exp)}">${money(s.exp)}</span>`;
+    $("#kAvgW").textContent = s.avgW == null ? "—" : money(s.avgW);
+    $("#kAvgL").textContent = s.avgL == null ? "—" : money(s.avgL);
+    const aw = s.avgW || 0, al = Math.abs(s.avgL || 0), tot = aw + al;
+    $("#kBarW").style.width = (tot ? (aw / tot) * 100 : 50) + "%";
+    $("#kBarL").style.width = (tot ? (al / tot) * 100 : 50) + "%";
+    $("#kRR").innerHTML = (aw && al) ? `יחס רווח/הפסד: <span class="num">${(aw / al).toFixed(2)}</span>` : "יחס רווח/הפסד: —";
+  }
+
+  function niceTicks(min, max, count) {
+    const span = max - min || 1;
+    const raw = span / count; const mag = Math.pow(10, Math.floor(Math.log10(raw))); const nrm = raw / mag;
+    const step = (nrm < 1.5 ? 1 : nrm < 3 ? 2 : nrm < 7 ? 5 : 10) * mag;
+    const out = [];
+    for (let v = Math.floor(min / step) * step; v <= Math.ceil(max / step) * step + step / 2; v += step) out.push(Math.round(v * 100) / 100);
+    return out;
+  }
+
+  let lastEqW = 0;
+  function renderEquity() {
+    const box = $("#equityChart");
+    const curve = state.curve;
+    const W = Math.max(260, Math.round(box.clientWidth || 600));
+    lastEqW = W;
+    if (curve.length < 2) {
+      box.innerHTML = `<div class="chart-empty">${state.trades.length ? "אין עסקאות בתקופה הזו." : "העקומה תופיע אחרי העסקה הראשונה שתרשום."}</div>`;
+      $("#eqMeta").textContent = "רווח מצטבר לפי עסקה";
+      return;
+    }
+    const H = W < 520 ? 210 : 250;
+    const pad = {l: 50, r: 18, t: 18, b: 28};
+    const ys = curve.map((p) => p.y);
+    let min = Math.min(0, ...ys), max = Math.max(0, ...ys);
+    if (min === max) { max += 1; min -= 1; }
+    const ticks = niceTicks(min, max, 4);
+    min = ticks[0]; max = ticks[ticks.length - 1];
+    const n = curve.length - 1;
+    const x = (i) => pad.l + (i / n) * (W - pad.l - pad.r);
+    const y = (v) => pad.t + (1 - (v - min) / (max - min)) * (H - pad.t - pad.b);
+    const z = y(0);
+    const line = curve.map((p, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(p.y).toFixed(1)).join(" ");
+    const area = line + ` L${x(n).toFixed(1)} ${z.toFixed(1)} L${x(0).toFixed(1)} ${z.toFixed(1)} Z`;
+    let g = "";
+    for (const t of ticks) {
+      const ty = y(t).toFixed(1);
+      if (t !== 0) g += `<line class="eq-grid" x1="${pad.l}" x2="${W - pad.r}" y1="${ty}" y2="${ty}"/>`;
+      g += `<text class="eq-tick" x="${pad.l - 8}" y="${ty}" dy="0.35em" text-anchor="end">${t === 0 ? "$0" : moneyK(t)}</text>`;
+    }
+    const lbls = [];
+    const idx = [...new Set(n >= 3 ? [1, Math.round((n + 1) / 2), n] : n === 2 ? [1, 2] : [1])];
+    idx.forEach((i, k) => {
+      if (!curve[i].date) return;
+      const anchor = idx.length === 1 ? "middle" : k === 0 ? "start" : k === idx.length - 1 ? "end" : "middle";
+      lbls.push(`<text class="eq-tick" x="${x(i).toFixed(1)}" y="${H - 8}" text-anchor="${anchor}">${esc(parseYmd(curve[i].date).toLocaleDateString("he-IL", {day: "numeric", month: "numeric"}))}</text>`);
+    });
+    const last = curve[n];
+    const ey = y(last.y);
+    box.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="עקומת הון: ${esc(money(last.y))} אחרי ${n} עסקאות">
+      <defs>
+        <clipPath id="cpUp"><rect x="0" y="0" width="${W}" height="${Math.max(0, z).toFixed(1)}"/></clipPath>
+        <clipPath id="cpDn"><rect x="0" y="${z.toFixed(1)}" width="${W}" height="${Math.max(0, H - z).toFixed(1)}"/></clipPath>
+      </defs>
+      ${g}
+      <path d="${area}" class="a-up" clip-path="url(#cpUp)"/>
+      <path d="${area}" class="a-dn" clip-path="url(#cpDn)"/>
+      <line class="eq-zero" x1="${pad.l}" x2="${W - pad.r}" y1="${z.toFixed(1)}" y2="${z.toFixed(1)}"/>
+      <path d="${line}" class="eq-line"/>
+      <circle class="eq-dot" cx="${x(n).toFixed(1)}" cy="${ey.toFixed(1)}" r="5"/>
+      ${lbls.join("")}
+    </svg>`;
+    $("#eqMeta").innerHTML = `<span class="num ${cls(last.y)}" style="font-weight:600">${esc(money(last.y, 0))}</span> · ${n} עסקאות`;
+  }
+
+  function renderDays(s) {
+    const el = $("#dayStats");
+    const row = (k, v, sub) => `<div class="stat-row"><span class="k">${k}</span><span class="v">${v}${sub ? `<small>${sub}</small>` : ""}</span></div>`;
+    $("#daysMeta").textContent = s.days ? `${s.days} ימים` : "";
+    el.innerHTML =
+      row("ימים ירוקים", s.days ? `<span class="num">${s.green}/${s.days}</span>` : "—", s.days ? `${pct(s.green / s.days)} מהימים ברווח` : "") +
+      row("היום הכי טוב", s.best ? `<span class="num ${cls(s.best.v)}">${money(s.best.v)}</span>` : "—", s.best ? esc(dLong(s.best.d)) : "") +
+      row("היום הכי גרוע", s.worst ? `<span class="num ${cls(s.worst.v)}">${money(s.worst.v)}</span>` : "—", s.worst ? esc(dLong(s.worst.d)) : "") +
+      row("ירידה מקסימלית מהשיא", s.n ? `<span class="num ${s.dd < 0 ? "neg" : "zero"}">${money(s.dd)}</span>` : "—", s.n ? "Max drawdown" : "") +
+      row("עמידה בתוכנית", s.plan == null ? "—" : `<span class="num">${pct(s.plan)}</span>`, s.planCount ? `מתוך ${s.planCount} עסקאות שסימנת` : "") +
+      (() => { const n = offDays(inPeriod).size; return row("ימים בלי עסקאות", n ? `<span class="num">${n}</span>` : "—", n ? "ימים שתיעדת בלי מסחר" : ""); })();
+  }
+
+  function renderCal() {
+    const m = state.cal; const y = m.getFullYear(), mo = m.getMonth();
+    $("#calTitle").textContent = m.toLocaleDateString("he-IL", {month: "long", year: "numeric"});
+    const prefix = y + "-" + pad2(mo + 1) + "-";
+    const byDay = new Map();
+    for (const t of byAccount(state.trades)) {
+      if (!String(t.date).startsWith(prefix)) continue;
+      const cur = byDay.get(t.date) || {v: 0, n: 0};
+      cur.v += Number(t.pnl) || 0; cur.n++;
+      byDay.set(t.date, cur);
+    }
+    const logDays = new Set(state.days.filter((d) => acctOk(d) && String(d.date).startsWith(prefix)).map((d) => d.date));
+    let maxAbs = 0, monthNet = 0, green = 0, offCount = 0;
+    for (const d of byDay.values()) { maxAbs = Math.max(maxAbs, Math.abs(d.v)); monthNet += d.v; if (d.v > 0) green++; }
+    const today = ymd(new Date());
+    let html = DOW.map((d) => `<div class="dow">${d}</div>`).join("");
+    const startDow = new Date(y, mo, 1).getDay();
+    for (let i = 0; i < startDow; i++) html += `<div class="day blank"></div>`;
+    const dim = new Date(y, mo + 1, 0).getDate();
+    for (let d = 1; d <= dim; d++) {
+      const key = prefix + pad2(d);
+      const info = byDay.get(key);
+      const logged = logDays.has(key);
+      let style = "", inner = `<span class="drow"><span class="dnum">${d}</span>${logged && info ? '<span class="note-dot" title="יש רישום יום"></span>' : ""}</span>`, extra = "";
+      if (!info && logged) {
+        offCount++;
+        inner += `<span class="dp zero">$0</span><span class="dc">ללא עסקאות</span>`;
+        extra = " has off";
+      }
+      if (info) {
+        const k = maxAbs ? Math.abs(info.v) / maxAbs : 0;
+        const strength = Math.round(14 + k * 34);
+        const col = info.v > 0 ? "var(--win)" : info.v < 0 ? "var(--loss)" : "var(--flat)";
+        style = `background:color-mix(in srgb, ${col} ${strength}%, var(--surface));border-color:color-mix(in srgb, ${col} ${strength + 14}%, var(--surface))`;
+        inner += `<span class="dp ${cls(info.v)}">${(info.v > 0 ? "+" : "") + esc(moneyK(info.v))}</span><span class="dc">${info.n} עסקאות</span>`;
+        extra = " has";
+      }
+      const click = info || logged;
+      const tag = click ? "button" : "div";
+      html += `<${tag} ${click ? `type="button" data-day="${key}" aria-label="${esc(dLong(key))}: ${info ? esc(money(info.v)) : "ללא עסקאות"}"` : ""} class="day${extra}${key === today ? " today" : ""}${state.day === key ? " selected" : ""}" style="${style}">${inner}</${tag}>`;
+    }
+    $("#cal").innerHTML = html;
+    $("#calSum").innerHTML = (byDay.size
+      ? `סה״כ בחודש: <span class="num ${cls(monthNet)}">${money(monthNet)}</span> · ${green}/${byDay.size} ימים ירוקים`
+      : "אין עסקאות בחודש הזה") + (offCount ? " · " + offLabel(offCount) : "");
+  }
+
+  function renderBreakdown(list) {
+    const key = state.breakdown;
+    const groups = new Map();
+    for (const t of list) {
+      let k = key === "setup" ? (t.setup || "ללא סטאפ") : key === "symbol" ? (t.symbol || "—") : (t.side === "short" ? "Short" : "Long");
+      const g = groups.get(k) || {n: 0, w: 0, net: 0};
+      const p = Number(t.pnl) || 0;
+      g.n++; if (p > 0) g.w++; g.net += p;
+      groups.set(k, g);
+    }
+    const rows = [...groups.entries()].sort((a, b) => b[1].net - a[1].net).slice(0, 8);
+    if (!rows.length) { $("#bkList").innerHTML = `<div class="chart-empty" style="min-height:140px">הפילוח יופיע כשיהיו עסקאות.</div>`; return; }
+    const maxAbs = Math.max(...rows.map((r) => Math.abs(r[1].net))) || 1;
+    $("#bkList").innerHTML = rows.map(([k, g]) => {
+      const w = Math.max(3, (Math.abs(g.net) / maxAbs) * 100);
+      return `<div class="bk-row">
+        <span class="bk-name" ${key !== "setup" ? 'dir="ltr" style="text-align:right"' : ""}>${esc(k)}</span>
+        <span class="bk-net num ${cls(g.net)}">${money(g.net, 0)}</span>
+        <span class="bk-meta">${g.n} עסקאות · ${pct(g.w / g.n)} הצלחה</span>
+        <span class="bk-bar"><span style="width:${w.toFixed(1)}%;background:${g.net >= 0 ? "var(--win)" : "var(--loss)"}"></span></span>
+      </div>`;
+    }).join("");
+  }
+
+  function renderTrades() {
+    const body = $("#tradesBody");
+    const chip = $("#dayChip");
+    chip.hidden = !state.day;
+    if (state.day) $("#dayChipText").textContent = "יום: " + dLong(state.day);
+    let list = state.day ? byAccount(state.trades).filter((t) => t.date === state.day) : scoped();
+    list = list.slice().sort((a, b) => sortKey(a) < sortKey(b) ? 1 : -1);
+    $("#tradesMeta").textContent = list.length ? `${list.length} עסקאות` : "";
+    const ok = state.conn === "ok";
+    const noteHtml = state.day ? dayLogsFor(state.day).map((d) => `<div class="daynote"><div style="min-width:0"><div class="t">רישום יום${d.account ? " · " + esc(d.account) : ""}</div><p>${esc(d.note || "בלי הערה")}</p></div>${ok ? `<button class="btn ghost small" type="button" data-act="editday" data-id="${esc(d.id)}">עריכה</button>` : ""}</div>`).join("") : "";
+    if (!state.trades.length && !state.day) {
+      body.innerHTML = `<div class="empty"><strong>עוד אין עסקאות ביומן</strong><span>רשום את העסקה הראשונה שלך: נכס, כיוון, כניסה ויציאה. הרווח והסטטיסטיקות יחושבו לבד.</span>${ok ? '<div class="top-actions" style="justify-content:center"><button class="btn primary" type="button" data-act="add">רשום עסקה ראשונה</button><button class="btn ghost" type="button" data-act="logday">תעד יום בלי עסקאות</button></div>' : ""}</div>`;
+      return;
+    }
+    if (!list.length) {
+      body.innerHTML = noteHtml + (state.day
+        ? `<div class="empty"><strong>אין עסקאות ביום הזה</strong><span>${noteHtml ? "היום מתועד כיום בלי מסחר." : "אפשר לתעד אותו כיום בלי עסקאות."}</span>${ok && !noteHtml ? '<button class="btn ghost" type="button" data-act="logday">תעד את היום</button>' : ""}</div>`
+        : `<div class="empty"><strong>אין עסקאות בתקופה הזו</strong><span>בחר תקופה אחרת למעלה.</span></div>`);
+      return;
+    }
+    const limit = state.showAll ? list.length : 40;
+    const rows = list.slice(0, limit).map((t) => {
+      const p = Number(t.pnl) || 0;
+      const pts = (!t.manual && t.entry != null && t.exit != null) ? (t.side === "short" ? t.entry - t.exit : t.exit - t.entry) : null;
+      const plan = t.plan === true ? '<span class="plan-yes">✓</span>' : t.plan === false ? '<span class="plan-no">✕</span>' : '<span class="zero">—</span>';
+      return `<tr data-id="${esc(t.id)}" tabindex="0">
+        <td><span class="num">${esc(dShort(t.date))}</span>${t.sample ? '<span class="sample-mark">דוגמה</span>' : ""}</td>
+        <td class="c-md num">${esc(t.time || "—")}</td>
+        <td><span class="sym">${esc(t.symbol || "—")}</span>${t.account ? `<div class="acct">${esc(t.account)}</div>` : ""}</td>
+        <td><span class="pill ${t.side === "short" ? "short" : "long"}">${t.side === "short" ? "SHORT" : "LONG"}</span></td>
+        <td class="r num c-md">${t.qty == null ? "—" : esc(t.qty)}</td>
+        <td class="r num c-md">${esc(price(t.entry))}</td>
+        <td class="r num c-md">${esc(price(t.exit))}</td>
+        <td class="r num c-md ${pts == null ? "zero" : cls(pts)}">${pts == null ? "—" : sign(pts) + Math.abs(r5(pts))}</td>
+        <td class="r num ${cls(p)}" style="font-weight:600">${money(p)}</td>
+        <td class="c-md">${t.setup ? `<span class="tag">${esc(t.setup)}</span>` : '<span class="zero">—</span>'}</td>
+        <td class="c-md" style="text-align:center">${plan}</td>
+      </tr>`;
+    }).join("");
+    body.innerHTML = noteHtml + `<div class="table-wrap"><table>
+      <thead><tr><th>תאריך</th><th class="c-md">שעה</th><th>נכס</th><th>כיוון</th><th class="r c-md">כמות</th><th class="r c-md">כניסה</th><th class="r c-md">יציאה</th><th class="r c-md">נקודות</th><th class="r">רווח/הפסד</th><th class="c-md">סטאפ</th><th class="c-md">תוכנית</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>` +
+      (list.length > limit ? `<div class="more"><button class="btn ghost small" type="button" data-act="more">הצג את כל ${list.length} העסקאות</button></div>` : "");
+  }
+
+  function renderDatalists() {
+    const uniq = (arr) => [...new Set(arr.filter(Boolean))];
+    const syms = uniq(state.trades.map((t) => t.symbol).concat(Object.keys(FUT)));
+    const html = (arr) => arr.map((v) => `<option value="${esc(v)}"></option>`).join("");
+    const s1 = html(syms), s2 = html(uniq(state.trades.concat(state.days).map((t) => t.account))), s3 = html(uniq(state.trades.map((t) => t.setup)));
+    if ($("#symList").innerHTML !== s1) $("#symList").innerHTML = s1;
+    if ($("#acctList").innerHTML !== s2) $("#acctList").innerHTML = s2;
+    if ($("#setupList").innerHTML !== s3) $("#setupList").innerHTML = s3;
+  }
+
+  /* ---------- toast ---------- */
+  let toastT = 0;
+  function toast(msg, err) {
+    const t = $("#toast"); t.textContent = msg; t.className = "toast" + (err ? " err" : ""); t.hidden = false;
+    clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, err ? 4200 : 2400);
+  }
+  function errText(e) {
+    const c = e && e.code;
+    if (c === "invalid_argument") return "השמירה נדחתה. ייתכן שאין לך הרשאה לכתוב ביומן הזה.";
+    if (c === "quota_exceeded") return "היומן מלא. מחק עסקאות ישנות כדי לפנות מקום.";
+    if (c === "resource_exhausted") return "יותר מדי פעולות ברצף. חכה רגע ונסה שוב.";
+    if (c === "revoked" || c === "not_granted") return "הגישה ליומן נסגרה. רענן את הדף.";
+    return "השמירה נכשלה בגלל תקלת חיבור. נסה שוב.";
+  }
+  async function retry(fn) {
+    try { return await fn(); }
+    catch (e) {
+      if (e && e.code === "unavailable") { await new Promise((r) => setTimeout(r, 400 + Math.random() * 600)); return await fn(); }
+      throw e;
+    }
+  }
+
+  /* ---------- form ---------- */
+  const F = (id) => document.getElementById(id);
+  function defaultMult(market, symbol) {
+    const s = String(symbol || "").trim().toUpperCase();
+    if (market === "futures") return FUT[s] != null ? FUT[s] : null;
+    if (market === "options") return 100;
+    if (market === "stocks" || market === "crypto") return 1;
+    return null;
+  }
+  function syncMarketUI() {
+    const mk = F("fMarket").value;
+    F("qtyLabel").textContent = UNIT[mk] || "כמות";
+    F("multLabel").textContent = MULT_LABEL[mk] || "מכפיל";
+    const sym = String(F("fSymbol").value || "").trim().toUpperCase();
+    let hint = "";
+    if (mk === "futures") hint = FUT[sym] != null ? `${sym}: $${FUT[sym].toLocaleString("en-US")} לנקודה` : "שווי נקודה אחת בדולרים";
+    else if (mk === "options") hint = "בדרך כלל 100 מניות לחוזה";
+    else if (mk === "forex") hint = "בפורקס קל יותר להזין רווח ידנית";
+    else if (mk === "stocks" || mk === "crypto") hint = "1 = רווח לפי מחיר × כמות";
+    F("multHint").textContent = hint;
+  }
+  function applyDefaultMult() {
+    if (state.multTouched) return;
+    const m = defaultMult(F("fMarket").value, F("fSymbol").value);
+    if (m != null) F("fMult").value = m;
+    else if (F("fMarket").value !== "futures") F("fMult").value = "";
+  }
+  function readForm() {
+    const manual = F("fManual").checked;
+    const side = document.querySelector('input[name="side"]:checked')?.value || "long";
+    const planV = document.querySelector('input[name="plan"]:checked')?.value;
+    return {
+      date: F("fDate").value, time: F("fTime").value || "",
+      market: F("fMarket").value, symbol: String(F("fSymbol").value || "").trim().toUpperCase(),
+      side, qty: num(F("fQty").value), mult: num(F("fMult").value),
+      entry: num(F("fEntry").value), exit: num(F("fExit").value),
+      fees: num(F("fFees").value) || 0, account: String(F("fAccount").value || "").trim(),
+      manual, pnlManual: num(F("fPnl").value),
+      setup: String(F("fSetup").value || "").trim(), notes: String(F("fNotes").value || "").trim(),
+      plan: planV === "yes" ? true : planV === "no" ? false : null
+    };
+  }
+  function computeFromForm(v) {
+    if (v.manual) return v.pnlManual == null ? null : {pnl: r2(v.pnlManual)};
+    if (v.qty == null || v.mult == null || v.entry == null || v.exit == null) return null;
+    const pts = v.side === "short" ? v.entry - v.exit : v.exit - v.entry;
+    const gross = pts * v.qty * v.mult;
+    return {pnl: r2(gross - v.fees), pts, gross};
+  }
+  function updatePreview() {
+    const v = readForm();
+    F("manualRow").hidden = !v.manual;
+    const res = computeFromForm(v);
+    const pv = F("pvPnl");
+    if (!res) { pv.textContent = "—"; pv.className = "big num"; F("pvCalc").textContent = v.manual ? "הזן סכום" : "ממלאים כמות, כניסה ויציאה"; return; }
+    pv.textContent = money(res.pnl); pv.className = "big num " + cls(res.pnl);
+    F("pvCalc").textContent = v.manual ? "הוזן ידנית" :
+      `${sign(res.pts)}${Math.abs(r5(res.pts))} נק׳ × ${v.qty} × ${v.mult} = ${money(res.gross)}` + (v.fees ? `  − עמלות $${v.fees}` : "");
+  }
+
+  let deleteArmed = false, deleteT = 0;
+  function openForm(t) {
+    state.editing = t || null;
+    state.multTouched = !!t;
+    F("formTitle").textContent = t ? "עריכת עסקה" : "עסקה חדשה";
+    F("fDate").value = t ? t.date : (state.day || ymd(new Date()));
+    F("fTime").value = t ? (t.time || "") : nowHM();
+    F("fMarket").value = t ? (t.market || "futures") : ls.get("market", "futures");
+    F("fSymbol").value = t ? (t.symbol || "") : ls.get("symbol", "");
+    (t && t.side === "short" ? F("sideS") : F("sideL")).checked = true;
+    F("fQty").value = t ? (t.qty ?? "") : ls.get("qty", 1);
+    F("fMult").value = t ? (t.mult ?? "") : "";
+    F("fEntry").value = t ? (t.entry ?? "") : "";
+    F("fExit").value = t ? (t.exit ?? "") : "";
+    const feeMap = ls.get("fees", {});
+    F("fFees").value = t ? (t.fees || "") : (feeMap[F("fSymbol").value] ?? "");
+    F("fAccount").value = t ? (t.account || "") : ls.get("account", "");
+    F("fManual").checked = t ? !!t.manual : F("fMarket").value === "forex";
+    F("fPnl").value = t && t.manual ? t.pnl : "";
+    F("fSetup").value = t ? (t.setup || "") : "";
+    F("fNotes").value = t ? (t.notes || "") : "";
+    F("planY").checked = !!(t && t.plan === true);
+    F("planN").checked = !!(t && t.plan === false);
+    F("btnDelete").hidden = !t;
+    disarmDelete();
+    F("formErr").hidden = true;
+    if (!t) applyDefaultMult();
+    syncMarketUI(); updatePreview();
+    $("#overlay").hidden = false;
+    setTimeout(() => { (t ? F("fEntry") : (F("fSymbol").value ? F("fEntry") : F("fSymbol"))).focus(); }, 30);
+  }
+  function closeForm() { $("#overlay").hidden = true; state.editing = null; disarmDelete(); }
+  function disarmDelete() { deleteArmed = false; clearTimeout(deleteT); const b = F("btnDelete"); b.classList.remove("armed"); b.textContent = "מחק עסקה"; }
+  function formError(msg) { const e = F("formErr"); e.textContent = msg; e.hidden = false; }
+
+  async function saveTrade(ev) {
+    ev.preventDefault();
+    if (!colRef) return;
+    const v = readForm();
+    if (!v.date) return formError("בחר תאריך.");
+    if (!v.symbol) return formError("כתוב איזה נכס סחרת (למשל MNQ או AAPL).");
+    if (v.manual) {
+      if (v.pnlManual == null) return formError("הזן את סכום הרווח או ההפסד.");
+    } else {
+      if (v.qty == null || v.qty <= 0) return formError("הזן כמות גדולה מאפס.");
+      if (v.mult == null || v.mult <= 0) return formError(v.market === "futures" ? "הזן כמה שווה נקודה אחת בדולרים (למשל 2 ל-MNQ)." : "הזן מכפיל (1 למניות וקריפטו).");
+      if (v.entry == null || v.exit == null) return formError("הזן מחיר כניסה ומחיר יציאה, או סמן הזנה ידנית.");
+    }
+    const res = computeFromForm(v);
+    const doc = {
+      date: v.date, time: v.time, market: v.market, symbol: v.symbol, side: v.side,
+      qty: v.qty, mult: v.mult, entry: v.entry, exit: v.exit, fees: v.fees,
+      account: v.account, manual: v.manual, pnl: res.pnl, setup: v.setup, notes: v.notes, plan: v.plan,
+      updatedAt: Date.now()
+    };
+    const ed = state.editing;
+    doc.createdAt = ed && ed.createdAt ? ed.createdAt : Date.now();
+    if (ed && ed.sample) doc.sample = true;
+    const btn = F("btnSave"); btn.disabled = true; btn.textContent = "שומר…";
+    try {
+      const ref = ed ? colRef.doc(ed.id) : colRef.doc();
+      await retry(() => ref.set(doc));
+      ls.set("market", v.market); ls.set("symbol", v.symbol); ls.set("account", v.account);
+      if (v.qty) ls.set("qty", v.qty);
+      const fm = ls.get("fees", {}); fm[v.symbol] = v.fees || ""; ls.set("fees", fm);
+      closeForm();
+      toast(ed ? "העסקה עודכנה" : "העסקה נשמרה");
+    } catch (e) {
+      formError(errText(e));
+    } finally { btn.disabled = false; btn.textContent = "שמור עסקה"; }
+  }
+
+  async function deleteTrade() {
+    const ed = state.editing; if (!ed || !colRef) return;
+    if (!deleteArmed) {
+      deleteArmed = true; const b = F("btnDelete"); b.classList.add("armed"); b.textContent = "לחץ שוב למחיקה";
+      deleteT = setTimeout(disarmDelete, 4000); return;
+    }
+    try { await retry(() => colRef.doc(ed.id).delete()); closeForm(); toast("העסקה נמחקה"); }
+    catch (e) { formError(errText(e)); }
+  }
+
+  let clearArmed = false, clearT = 0;
+  async function clearSamples() {
+    const b = $("#btnClearSamples");
+    if (!colRef) return;
+    if (!clearArmed) {
+      clearArmed = true; b.textContent = "לחץ שוב לאישור"; b.classList.add("danger", "armed");
+      clearT = setTimeout(() => { clearArmed = false; b.textContent = "מחק את הדוגמאות"; b.classList.remove("danger", "armed"); }, 4000);
+      return;
+    }
+    clearTimeout(clearT); clearArmed = false; b.disabled = true; b.textContent = "מוחק…";
+    try {
+      for (const t of state.trades.filter((x) => x.sample)) await retry(() => colRef.doc(t.id).delete());
+      toast("הדוגמאות נמחקו. היומן מוכן לעסקאות שלך");
+    } catch (e) { toast(errText(e), true); }
+    finally { b.disabled = false; b.textContent = "מחק את הדוגמאות"; b.classList.remove("danger", "armed"); }
+  }
+
+  /* ---------- events ---------- */
+  $("#btnAdd").addEventListener("click", () => openForm(null));
+  $("#btnClose").addEventListener("click", closeForm);
+  $("#btnCancel").addEventListener("click", closeForm);
+  $("#overlay").addEventListener("mousedown", (e) => { if (e.target === e.currentTarget) closeForm(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (!$("#overlay").hidden) closeForm();
+    if (!$("#dayOverlay").hidden) closeDayForm();
+  });
+  $("#tradeForm").addEventListener("submit", saveTrade);
+  $("#tradeForm").addEventListener("input", (e) => {
+    if (e.target.id === "fMult") state.multTouched = true;
+    if (e.target.id === "fSymbol") {
+      applyDefaultMult(); syncMarketUI();
+      if (!state.editing) { const fm = ls.get("fees", {}); const s = String(e.target.value || "").trim().toUpperCase(); if (fm[s] != null && !F("fFees").value) F("fFees").value = fm[s]; }
+    }
+    updatePreview();
+  });
+  $("#tradeForm").addEventListener("change", (e) => {
+    if (e.target.id === "fMarket") {
+      if (!state.editing) state.multTouched = false;
+      applyDefaultMult(); syncMarketUI();
+      if (e.target.value === "forex" && !F("fManual").checked) F("fManual").checked = true;
+    }
+    updatePreview();
+  });
+  $("#btnDelete").addEventListener("click", deleteTrade);
+  $("#btnClearSamples").addEventListener("click", clearSamples);
+
+  $("#periodSeg").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-p]"); if (!b) return;
+    state.period = b.dataset.p; state.day = null; state.showAll = false;
+    document.querySelectorAll("#periodSeg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    render();
+  });
+  $("#bkSeg").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-b]"); if (!b) return;
+    state.breakdown = b.dataset.b;
+    document.querySelectorAll("#bkSeg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    renderBreakdown(scoped());
+  });
+  $("#acctFilter").addEventListener("change", (e) => { state.acct = e.target.value; state.showAll = false; render(); });
+  $("#calPrev").addEventListener("click", () => { state.cal = new Date(state.cal.getFullYear(), state.cal.getMonth() - 1, 1); renderCal(); });
+  $("#calNext").addEventListener("click", () => { state.cal = new Date(state.cal.getFullYear(), state.cal.getMonth() + 1, 1); renderCal(); });
+  $("#cal").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-day]"); if (!b) return;
+    state.day = state.day === b.dataset.day ? null : b.dataset.day;
+    renderCal(); renderTrades();
+    if (state.day) $("#tradesBody").scrollIntoView({behavior: "smooth", block: "nearest"});
+  });
+  $("#dayChipX").addEventListener("click", () => { state.day = null; renderCal(); renderTrades(); });
+  $("#tradesBody").addEventListener("click", (e) => {
+    const act = e.target.closest("[data-act]");
+    if (act) {
+      const a = act.dataset.act;
+      if (a === "add") openForm(null);
+      if (a === "more") { state.showAll = true; renderTrades(); }
+      if (a === "logday") openDayForm(null, state.day);
+      if (a === "editday") { const d = state.days.find((x) => x.id === act.dataset.id); if (d) openDayForm(d); }
+      return;
+    }
+    const tr = e.target.closest("tr[data-id]"); if (!tr || state.conn !== "ok") return;
+    const t = state.trades.find((x) => x.id === tr.dataset.id); if (t) openForm(t);
+  });
+  $("#tradesBody").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    const tr = e.target.closest("tr[data-id]"); if (!tr || state.conn !== "ok") return;
+    const t = state.trades.find((x) => x.id === tr.dataset.id); if (t) openForm(t);
+  });
+
+  const ro = new ResizeObserver(() => {
+    const w = Math.round($("#equityChart").clientWidth);
+    if (Math.abs(w - lastEqW) > 4) requestAnimationFrame(renderEquity);
+  });
+  ro.observe($("#equityChart"));
+
+  /* ---------- store ---------- */
+  function subscribe() {
+    colRef.onSnapshot((snap) => {
+      state.trades = snap.docs.map((d) => Object.assign({id: d.id}, d.data()));
+      state.loaded = true; state.conn = "ok";
+      render();
+    }, (err) => {
+      if (err && err.code === "unavailable") { setTimeout(subscribe, 1500); return; }
+      state.conn = "error"; render();
+    });
+  }
+  function subscribeDays() {
+    daysRef.onSnapshot((snap) => {
+      state.days = snap.docs.map((d) => Object.assign({id: d.id}, d.data()));
+      render();
+    }, (err) => {
+      if (err && err.code === "unavailable") setTimeout(subscribeDays, 1500);
+    });
+  }
+
+  /* ---------- day log form ---------- */
+  let editingDay = null, dayArmed = false, dayArmT = 0;
+  const slug = (v) => String(v || "").trim().replace(/[^A-Za-z0-9_\-.~:@+]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+  const dayId = (date, account) => { const sl = slug(account); return sl ? date + "_" + sl : date; };
+  function disarmDay() { dayArmed = false; clearTimeout(dayArmT); const b = F("dayDelete"); b.classList.remove("armed"); b.textContent = "מחק רישום"; }
+  function openDayForm(d, presetDate) {
+    editingDay = d || null;
+    F("dayTitle").textContent = d ? "עריכת רישום יום" : "רישום יום";
+    F("dDate").value = d ? d.date : (presetDate || ymd(new Date()));
+    F("dAccount").value = d ? (d.account || "") : (state.acct || ls.get("account", ""));
+    F("dNote").value = d ? (d.note || "") : "";
+    F("dayDelete").hidden = !d; disarmDay();
+    F("dayErr").hidden = true;
+    $("#dayOverlay").hidden = false;
+    setTimeout(() => F("dNote").focus(), 30);
+  }
+  function closeDayForm() { $("#dayOverlay").hidden = true; editingDay = null; disarmDay(); }
+  function dayError(msg) { const e = F("dayErr"); e.textContent = msg; e.hidden = false; }
+  async function saveDay(ev) {
+    ev.preventDefault();
+    if (!daysRef) return;
+    const date = F("dDate").value, account = String(F("dAccount").value || "").trim(), note = String(F("dNote").value || "").trim();
+    if (!date) return dayError("בחר תאריך.");
+    const id = dayId(date, account), prev = editingDay;
+    const doc = {date, account, note, createdAt: prev && prev.createdAt ? prev.createdAt : Date.now(), updatedAt: Date.now()};
+    const btn = F("daySave"); btn.disabled = true; btn.textContent = "שומר…";
+    try {
+      await retry(() => daysRef.doc(id).set(doc));
+      if (prev && prev.id !== id) await retry(() => daysRef.doc(prev.id).delete());
+      if (account) ls.set("account", account);
+      closeDayForm();
+      toast(prev ? "הרישום עודכן" : "היום תועד");
+    } catch (e) { dayError(errText(e)); }
+    finally { btn.disabled = false; btn.textContent = "שמור יום"; }
+  }
+  async function deleteDay() {
+    if (!editingDay || !daysRef) return;
+    if (!dayArmed) { dayArmed = true; const b = F("dayDelete"); b.classList.add("armed"); b.textContent = "לחץ שוב למחיקה"; dayArmT = setTimeout(disarmDay, 4000); return; }
+    try { await retry(() => daysRef.doc(editingDay.id).delete()); closeDayForm(); toast("הרישום נמחק"); }
+    catch (e) { dayError(errText(e)); }
+  }
+  $("#btnDay").addEventListener("click", () => openDayForm(null, state.day));
+  $("#dayClose").addEventListener("click", closeDayForm);
+  $("#dayCancel").addEventListener("click", closeDayForm);
+  $("#dayOverlay").addEventListener("mousedown", (e) => { if (e.target === e.currentTarget) closeDayForm(); });
+  $("#dayForm").addEventListener("submit", saveDay);
+  $("#dayDelete").addEventListener("click", deleteDay);
+
+  async function connect() {
+    if (!window.claude || typeof window.claude.use !== "function") { state.conn = "offline"; render(); return; }
+    let db = null, user = null;
+    try { [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]); } catch (e) {}
+    if (!db) { state.conn = "offline"; render(); return; }
+    if (user) {
+      let owner = null; try { owner = await user.isOwner(); } catch (e) {}
+      if (owner === false) { state.conn = "private"; render(); return; }
+    }
+    colRef = db.doc("journal/main").collection("trades");
+    daysRef = db.doc("journal/main").collection("days");
+    subscribe();
+    subscribeDays();
+  }
+
+  render();
+  connect();
+})();
+</script>
+
+
+</body>
+</html>

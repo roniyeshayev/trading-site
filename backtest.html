@@ -1,0 +1,2309 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{box-sizing:border-box}html,body{margin:0;padding:0}body{font:14px -apple-system,BlinkMacSystemFont,sans-serif}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="store.js"></script>
+</head>
+<body>
+<title>בקטסט ריפליי</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Hebrew:wght@400;500;600&display=swap">
+<style>
+/* Layout: two chart panes side by side (NQ left, ES right) inside a dark frame, toolbar on top, trading dock at the bottom.
+   Single dark look on purpose: it matches the user's own charting setup. Chart colors live in JS (CH) and copy his candle settings. */
+:root{
+  --bg:#0F0F0F; --panel:#161616; --raised:#212121; --line:#2E2E2E; --fg:#E8E8E8; --muted:#9C9C9C;
+  --accent:#3A78FF; --buy:#2F6BFF; --sell:#F23B4B; --up:#2DC071; --down:#F2545B; --amber:#F5B544;
+  --ui:"IBM Plex Sans Hebrew",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --chart:-apple-system,BlinkMacSystemFont,"Trebuchet MS",Roboto,Ubuntu,sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg)}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+#app{font-family:var(--ui);font-size:13.5px;line-height:1.4;height:100%;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto;gap:6px;
+  padding-block:8px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+button,input,select{font:inherit;color:inherit}
+.num{direction:ltr;unicode-bidi:isolate;font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.up{color:var(--up)} .down{color:var(--down)}
+.btn{height:30px;padding:0 11px;border:1px solid var(--line);background:var(--raised);border-radius:6px;cursor:pointer;font-size:12.5px;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:#4a4a4a;background:#272727}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn.danger{color:var(--down)}
+.btn.small{height:26px;padding:0 9px;font-size:12px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.seg{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:2px;gap:1px}
+.seg button{border:0;background:transparent;height:24px;padding:0 8px;border-radius:5px;color:var(--muted);cursor:pointer;font-size:12.5px}
+.seg button:hover{color:var(--fg)}
+.seg button.on{background:var(--raised);color:var(--fg)}
+.seg button:disabled{opacity:.3;cursor:not-allowed}
+input[type=text],input[type=number],input[type=date],input[type=time],input:not([type]),select{height:30px;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:0 8px;min-width:0}
+input.n{font-family:var(--mono);direction:ltr;text-align:left}
+label{font-size:12px;color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:999px;border:1px solid var(--line);font-size:11.5px;color:var(--muted);white-space:nowrap}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.chip.ok .dot{background:var(--up)} .chip.warn .dot{background:var(--amber)} .chip.err .dot{background:var(--down)}
+
+/* top rows */
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
+.brand{font-weight:600;font-size:15px;margin-inline-end:6px;white-space:nowrap}
+.brand span{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:1px 5px;margin-inline-start:6px;vertical-align:2px}
+.sess select{max-width:210px}
+.spacer{flex:1}
+.clock{display:flex;flex-direction:column;align-items:flex-end;line-height:1.2}
+.clock .main{font-family:var(--mono);font-weight:600;font-size:16px;color:var(--amber);direction:ltr;unicode-bidi:isolate}
+.clock .sub{font-family:var(--mono);font-size:11px;color:var(--muted);direction:ltr;unicode-bidi:isolate}
+.transport{display:flex;align-items:center;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:2px}
+.tbtn{width:30px;height:28px;border-radius:6px;border:0;background:transparent;display:grid;place-items:center;cursor:pointer;color:var(--fg)}
+.tbtn:hover{background:var(--raised)}
+.tbtn svg{width:16px;height:16px;fill:currentColor}
+.tbtn.play{background:var(--amber);color:#1a1205;width:34px}
+.tbtn.play:hover{background:var(--amber);filter:brightness(1.08)}
+.transport select{height:26px;font-family:var(--mono);font-size:12px;border:0;background:transparent}
+.tg{display:inline-flex;align-items:center;gap:5px;color:var(--fg);font-size:12.5px;cursor:pointer}
+
+/* charts */
+.charts{position:relative;display:grid;grid-template-columns:minmax(0,var(--lw,1fr)) 6px minmax(0,var(--rw,1fr));gap:0;background:var(--line);border:4px solid var(--line);border-radius:6px;min-height:0}
+.charts.single,.charts.max0,.charts.max1{grid-template-columns:minmax(0,1fr)}
+.charts.single .vsplit,.charts.max0 .vsplit,.charts.max1 .vsplit{display:none}
+.charts.max0 .pane[data-p="1"],.charts.max1 .pane[data-p="0"]{display:none}
+.vsplit{cursor:col-resize;background:var(--line);touch-action:none}
+.vsplit:hover,.vsplit.drag{background:var(--accent)}
+.pbtn{position:absolute;z-index:5;width:24px;height:22px;border-radius:5px;border:1px solid rgba(0,0,0,.35);background:rgba(20,20,20,.55);color:#EDEDED;display:grid;place-items:center;cursor:pointer;font:600 11px var(--chart);padding:0}
+.pbtn:hover{background:rgba(20,20,20,.85)}
+.pbtn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2}
+.pmax{top:6px;right:6px}
+.pfit{bottom:5px;right:6px}
+.dock-grip{height:6px;margin:-6px 0 0;cursor:row-resize;touch-action:none}
+.dock-grip:hover,.dock-grip.drag{background:var(--accent);border-radius:3px}
+.pane{position:relative;min-height:170px;background:#7E7C7C;overflow:hidden}
+.pane .cv{position:absolute;inset:0}
+.pane.picking .cv,.pane.drawing .cv{cursor:crosshair}
+.pane::after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 1px transparent;z-index:6}
+.charts:not(.single):not(.max0):not(.max1) .pane.active::after{box-shadow:inset 0 0 0 1px var(--accent)}
+.legend{position:absolute;top:6px;left:8px;z-index:3;pointer-events:none;font-family:var(--chart);font-size:13px;color:#DBDBDB;display:flex;flex-wrap:wrap;gap:2px 10px;align-items:baseline;max-width:calc(100% - 110px);direction:ltr}
+.legend .t{font-size:14px;color:#E6E6E6}
+.legend i{font-style:normal;color:#C9C9C9;margin-inline-end:1px}
+.legend .vu{color:#FFFFFF} .legend .vd{color:#121212}
+.legend .coarse{font-size:11.5px;color:#1a1205;background:#F5B544;border-radius:4px;padding:0 6px;direction:rtl;pointer-events:auto}
+.pbanner{pointer-events:none;position:absolute;top:30px;left:50%;transform:translateX(-50%);z-index:5;background:var(--amber);color:#1a1205;font-size:12px;font-weight:600;padding:4px 11px;border-radius:999px;white-space:nowrap;max-width:calc(100% - 24px);overflow:hidden;text-overflow:ellipsis;direction:rtl}
+.pempty{position:absolute;inset:0;display:grid;place-items:center;z-index:4;padding:20px;text-align:center;color:#1b1b1b;font-size:14px;direction:rtl}
+.pempty div{display:flex;flex-direction:column;gap:10px;align-items:center;max-width:36ch}
+.welcome{position:absolute;inset:0;z-index:8;background:var(--bg);display:grid;place-items:center;padding:24px;overflow:auto}
+.welcome .box{max-width:560px;display:flex;flex-direction:column;gap:14px}
+.welcome h1{margin:0;font-size:22px;font-weight:600}
+.welcome p{margin:0;color:var(--muted)}
+.welcome ol{margin:0;padding-inline-start:20px;display:flex;flex-direction:column;gap:6px;line-height:1.55}
+.welcome code{font-family:var(--mono);font-size:12.5px;background:var(--raised);border-radius:4px;padding:1px 5px;direction:ltr;unicode-bidi:isolate}
+
+/* drawing toolbar, TradingView style: a vertical strip left of the charts */
+.chartrow{display:flex;gap:6px;min-height:0;min-width:0}
+.chartrow>.charts{flex:1;min-width:0}
+.drawbar{display:grid;grid-auto-flow:column;grid-template-rows:repeat(auto-fill,30px);grid-auto-columns:32px;align-content:start;gap:1px 2px;padding:4px;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;flex:none;width:auto;min-width:42px}
+.drawbar button{width:32px;height:30px;flex:none;border:0;border-radius:6px;background:transparent;color:#BDBDBD;display:grid;place-items:center;cursor:pointer;padding:0}
+.drawbar button:hover{background:var(--raised);color:var(--fg)}
+.drawbar button.on{background:#24365F;color:#fff}
+.drawbar button.arm{background:var(--down);color:#fff}
+.drawbar svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.drawbar .dsep{display:none}
+.drawbar button.mag.on{background:#5B3A0E;color:#FFD08A}
+.selbar{position:absolute;top:30px;left:50%;transform:translateX(-50%);z-index:6;display:flex;gap:4px;align-items:center;background:rgba(18,18,18,.92);border:1px solid #3a3a3a;border-radius:8px;padding:4px;direction:rtl;white-space:nowrap;max-width:calc(100% - 16px);overflow-x:auto}
+.selbar .lbl{font-size:12px;color:var(--muted);padding:0 6px}
+.selbar button{height:26px;padding:0 9px;border-radius:5px;border:1px solid var(--line);background:var(--raised);color:var(--fg);font:500 12px var(--ui);cursor:pointer;flex:none}
+.selbar button:hover{border-color:#555}
+.selbar button.del{color:var(--down)}
+.selbar .sw{display:flex;gap:4px;align-items:center;padding:0 4px}
+.selbar .swb{width:18px;height:18px;padding:0;border-radius:50%;border:2px solid #5a5a5a}
+.selbar .swb.on{border-color:#fff;box-shadow:0 0 0 2px var(--accent)}
+.selbar .cp{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);padding:0 2px}
+.selbar .cp input{width:24px;height:22px;padding:0;border:1px solid #5a5a5a;border-radius:5px;background:none;cursor:pointer}
+.selbar .swb.multi{background:conic-gradient(#B71C1C,#BF4A00,#1B5E20,#00695C,#0D47A1,#4A148C,#B71C1C)}
+.pane.hovdraw .cv,.pane.hovdraw .cv *{cursor:pointer!important}
+.pane.hovhandle .cv,.pane.hovhandle .cv *,.pane.dragging .cv,.pane.dragging .cv *{cursor:move!important}
+
+/* dock */
+.dock{background:var(--panel);border:1px solid var(--line);border-radius:8px;display:flex;flex-direction:column;min-height:0}
+.dock-h{display:flex;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.dock.collapsed .dock-h{border-bottom:0}
+.dock.collapsed .dock-b{display:none}
+.tabs{display:flex;gap:2px}
+.tabs button{border:0;background:transparent;color:var(--muted);height:26px;padding:0 10px;border-radius:5px;cursor:pointer;font-size:12.5px}
+.tabs button.on{background:var(--raised);color:var(--fg)}
+.keys{font-size:11.5px;color:var(--muted)}
+.keys kbd{font-family:var(--mono);font-size:10.5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px;background:var(--raised);color:var(--fg)}
+.dock-b{height:min(var(--dockH,236px),32vh);overflow:hidden}
+#app.big .dock{display:none}
+#app.big{grid-template-rows:auto auto minmax(0,1fr)}
+.bigbtn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.bigpos{position:absolute;left:10px;bottom:30px;z-index:7;background:rgba(15,15,15,.88);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12.5px;display:flex;gap:10px;align-items:center;direction:rtl}
+.bigpos b{font-family:var(--mono)}
+.bigpos button{height:24px;font-size:12px}
+.tradegrid{display:grid;grid-template-columns:minmax(300px,1.25fr) minmax(240px,1fr) minmax(260px,1fr);height:100%}
+.col{padding:10px 12px;display:flex;flex-direction:column;gap:8px;overflow:auto;min-width:0;border-inline-start:1px solid var(--line)}
+.col:first-child{border-inline-start:0}
+.col-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.col-h h2{margin:0;font-size:13.5px;font-weight:600}
+.r3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.r3>div,.r2>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.r2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.inp{display:flex;gap:3px}
+.inp input{flex:1;width:100%}
+.pick{width:30px;height:30px;flex:none;border:1px solid var(--line);background:var(--raised);border-radius:6px;display:grid;place-items:center;cursor:pointer;color:var(--muted)}
+.pick svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8}
+.pick.on{background:var(--amber);color:#1a1205;border-color:var(--amber)}
+.calc{font-size:12.5px;min-height:34px;display:flex;flex-direction:column;justify-content:center}
+.calc b{font-family:var(--mono)}
+.calc .big{font-weight:600;font-size:13.5px}
+.calc.err{color:var(--down)}
+.blocked{color:var(--down);font-size:12.5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.buysell{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.buysell button{height:36px;border-radius:6px;border:0;font-weight:600;font-size:14px;cursor:pointer;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1}
+.buysell small{font-family:var(--mono);font-weight:500;font-size:11px;opacity:.9}
+.sell{background:var(--sell)} .buy{background:var(--buy)}
+.buysell button:disabled{opacity:.3;cursor:not-allowed}
+.pnl{font-family:var(--mono);font-weight:600;font-size:22px;line-height:1.1}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:0;font-size:12.5px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-family:var(--mono);text-align:left;direction:ltr}
+.btnrow{display:flex;gap:5px;flex-wrap:wrap}
+.bal{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.bal .v{font-family:var(--mono);font-weight:600;font-size:19px;direction:ltr}
+.sgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.sgrid div{background:var(--bg);border-radius:6px;padding:4px 7px;display:flex;flex-direction:column;min-width:0}
+.sgrid span{font-size:10.5px;color:var(--muted)}
+.sgrid b{font-family:var(--mono);font-weight:600;font-size:13px;direction:ltr;text-align:right}
+.spark{width:100%;height:36px;display:block}
+.today{font-size:12px;color:var(--muted)}
+.tscroll{overflow:auto;height:100%}
+table.tl{width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap}
+table.tl th{position:sticky;top:0;background:var(--panel);color:var(--muted);font-weight:500;text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);z-index:1}
+table.tl td{padding:4px 8px;border-bottom:1px solid var(--line)}
+table.tl td.m{font-family:var(--mono);direction:ltr;text-align:right}
+table.tl tr:hover td{background:var(--raised)}
+table.tl tbody tr{cursor:pointer}
+table.tl input{height:24px;width:170px;font-size:12px}
+.side-l{color:var(--up);font-weight:600} .side-s{color:var(--down);font-weight:600}
+.tempty{padding:16px;color:var(--muted)}
+.foot{font-size:11px;color:var(--muted)}
+.foot a{color:var(--muted)}
+
+/* dialogs */
+dialog{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:0;width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 32px)}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+.dlg{display:flex;flex-direction:column;max-height:calc(100vh - 34px)}
+.dlg-h{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.dlg-h h2{margin:0;font-size:16px;font-weight:600}
+.dlg-b{padding:14px 16px;overflow:auto;display:flex;flex-direction:column;gap:12px}
+.dlg-f{padding:10px 16px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.fgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.fgrid>div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fgrid .wide{grid-column:1/-1}
+fieldset{border:1px solid var(--line);border-radius:8px;padding:10px;margin:0;display:flex;flex-direction:column;gap:8px;min-width:0}
+legend.fl{font-size:12px;color:var(--fg);padding:0 4px}
+.check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--fg)}
+.check input{width:16px;height:16px}
+.dslist{display:flex;flex-direction:column;gap:6px}
+.ds{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.ds .meta{font-size:12px;color:var(--muted)}
+.help{font-size:12.5px;color:var(--muted);background:var(--bg);border-radius:8px;padding:10px 12px;line-height:1.55}
+.help ol{margin:4px 0 0;padding-inline-start:18px}
+.msg{font-size:13px}
+textarea.paste{width:100%;resize:none;border:1px dashed var(--line);background:var(--panel);border-radius:8px;padding:8px 10px;color:var(--fg);font:inherit;font-size:12.5px}
+.msg.err{color:var(--down)} .msg.ok{color:var(--up)}
+#toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:50;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;max-width:calc(100vw - 32px)}
+#toast div{background:#EDEDED;color:#111;padding:7px 13px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.4);direction:rtl}
+
+@media (max-width:900px){
+  .chartrow{flex-direction:column}
+  #tfs{flex-wrap:wrap;max-width:100%}
+  .drawbar{display:flex;flex-direction:row;flex-wrap:wrap;width:auto;overflow:visible}
+  html,body{height:auto;min-height:100%}
+  #app{height:auto}
+  .charts,.charts.single{grid-template-columns:minmax(0,1fr)}
+  .vsplit{display:none}
+  .pane{height:48vh}
+  .dock-b{height:auto;max-height:none}
+  .tradegrid{grid-template-columns:minmax(0,1fr);height:auto}
+  .col{border-inline-start:0;border-top:1px solid var(--line)}
+  .col:first-child{border-top:0}
+  .tscroll{max-height:360px}
+  .clock{align-items:flex-start}
+}
+@media (max-width:520px){ .fgrid{grid-template-columns:minmax(0,1fr)} .sess select{max-width:140px} }
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div id="app" dir="rtl" lang="he">
+  <header class="bar">
+    <div class="brand">בקטסט ריפליי<span>REPLAY</span></div>
+    <div class="bar sess">
+      <select id="sessSel" aria-label="סשן"></select>
+      <button class="btn" id="bSessEdit" type="button">הגדרות</button>
+      <button class="btn" id="bSessNew" type="button">סשן חדש</button>
+      <button class="btn" id="bData" type="button">נתונים</button>
+    </div>
+    <span class="spacer"></span>
+    <div class="bar" style="gap:6px">
+      <button class="btn" id="bNextWin" type="button">לחלון הבא</button>
+      <button class="btn" id="bNextDay" type="button">יום הבא</button>
+      <input type="date" id="jDate" aria-label="תאריך לקפיצה">
+      <input type="time" id="jTime" aria-label="שעה לקפיצה" value="16:00">
+      <button class="btn" id="bJump" type="button">קפוץ</button>
+    </div>
+    <div class="clock"><div class="main" id="clkMain">—</div><div class="sub" id="clkSub"></div></div>
+    <span class="chip" id="saveState"><span class="dot"></span><span id="saveTxt">מתחבר…</span></span>
+  </header>
+
+  <div class="bar">
+    <div class="seg" id="tfs" dir="ltr" role="group" aria-label="טיים פריים"></div>
+    <label class="tg"><input type="checkbox" id="qSess"> סשנים</label>
+    <label class="tg"><input type="checkbox" id="qFvg"> FVG</label>
+    <button class="btn small" id="bInd" type="button">אינדיקטורים…</button>
+    <label class="tg"><input type="checkbox" id="syncOn" checked> סנכרון גרפים</label>
+    <div class="seg" id="tzSeg" role="group" aria-label="אזור זמן">
+      <button type="button" data-tz="Asia/Jerusalem" class="on">ישראל</button>
+      <button type="button" data-tz="America/New_York">ניו יורק</button>
+    </div>
+    <button class="btn small bigbtn" id="bBig" type="button" title="מסך גדול: שני הגרפים על כל המסך (F)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>מסך גדול</button>
+    <span class="spacer"></span>
+    <div class="transport" dir="ltr">
+      <button class="tbtn" id="bBack" type="button" title="נר אחורה (←)" aria-label="נר אחורה"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM18 5v14L9 12z"/></svg></button>
+      <button class="tbtn play" id="bPlay" type="button" title="נגן / עצור (רווח)" aria-label="נגן"><svg viewBox="0 0 24 24" id="playIco"><path d="M8 5v14l11-7z"/></svg></button>
+      <button class="tbtn" id="bNext" type="button" title="נר קדימה (→)" aria-label="נר קדימה"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM6 5v14l9-7z"/></svg></button>
+      <button class="tbtn" id="bCandle" type="button" title="נר שלם בטיים פריים של הגרף (Shift+→)" aria-label="נר שלם"><svg viewBox="0 0 24 24"><path d="M3 6v12l7-6zM11 6v12l7-6zM19 5h2v14h-2z"/></svg></button>
+      <select id="speed" aria-label="מהירות" title="נרות בשנייה"><option value="1">1×</option><option value="2">2×</option><option value="4" selected>4×</option><option value="8">8×</option><option value="20">20×</option><option value="60">60×</option><option value="150">150×</option></select>
+    </div>
+  </div>
+
+  <div class="chartrow" dir="ltr">
+  <nav class="drawbar" id="tools" aria-label="כלי ציור">
+    <button type="button" data-tool="none" class="on" title="סמן: בחירה וגרירה של ציורים (Esc)" aria-label="סמן"><svg viewBox="0 0 24 24"><path d="M6 3.5l12.5 9.2-5.6 1 3 5.6-2.3 1.2-3-5.6-4.1 3.9z" fill="currentColor" stroke="none"/></svg></button>
+    <span class="dsep"></span>
+    <button type="button" data-tool="line" title="קו מגמה (Alt+T)" aria-label="קו מגמה"><svg viewBox="0 0 24 24"><path d="M6.5 17.5l11-11"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/></svg></button>
+    <button type="button" data-tool="ray" title="קרן" aria-label="קרן"><svg viewBox="0 0 24 24"><path d="M6.5 17.5l4-4M13.5 10.5L21 3"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="12" r="2"/></svg></button>
+    <button type="button" data-tool="hline" title="קו אופקי (Alt+H)" aria-label="קו אופקי"><svg viewBox="0 0 24 24"><path d="M2 12h8M14 12h8"/><circle cx="12" cy="12" r="2"/></svg></button>
+    <button type="button" data-tool="hray" title="קרן אופקית" aria-label="קרן אופקית"><svg viewBox="0 0 24 24"><path d="M7 12h15"/><circle cx="5" cy="12" r="2"/></svg></button>
+    <button type="button" data-tool="vline" title="קו אנכי (Alt+V)" aria-label="קו אנכי"><svg viewBox="0 0 24 24"><path d="M12 2v8M12 14v8"/><circle cx="12" cy="12" r="2"/></svg></button>
+    <span class="dsep"></span>
+    <button type="button" data-tool="fib" title="פיבונאצ'י (Alt+F)" aria-label="פיבונאצ'י"><svg viewBox="0 0 24 24"><path d="M3 4h18M3 9h18M3 14h18M3 20h18"/><path d="M5 20L19 4" stroke-dasharray="2 2.5"/></svg></button>
+    <span class="dsep"></span>
+    <button type="button" data-tool="long" title="פוזיציית לונג" aria-label="פוזיציית לונג"><svg viewBox="0 0 24 24"><rect x="4" y="3.5" width="16" height="10" fill="rgba(8,153,129,.55)" stroke="#2BB596"/><rect x="4" y="13.5" width="16" height="7" fill="rgba(242,54,69,.55)" stroke="#F4626F"/></svg></button>
+    <button type="button" data-tool="short" title="פוזיציית שורט" aria-label="פוזיציית שורט"><svg viewBox="0 0 24 24"><rect x="4" y="3.5" width="16" height="7" fill="rgba(242,54,69,.55)" stroke="#F4626F"/><rect x="4" y="10.5" width="16" height="10" fill="rgba(8,153,129,.55)" stroke="#2BB596"/></svg></button>
+    <span class="dsep"></span>
+    <button type="button" data-tool="rect" title="מלבן (Alt+R)" aria-label="מלבן"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1"/></svg></button>
+    <button type="button" data-tool="measure" title="מדידת נקודות (או Shift+לחיצה על הגרף)" aria-label="מדידה"><svg viewBox="0 0 24 24"><path d="M12 4v16M8.5 7.5L12 4l3.5 3.5M8.5 16.5L12 20l3.5-3.5M5 3h14M5 21h14"/></svg></button>
+    <span class="dsep"></span>
+    <button type="button" id="bMagnet" class="mag on" title="מגנט חלש: נקודות של ציורים נצמדות לגבוה, לנמוך, לפתיחה או לסגירה של הנר כשהעכבר קרוב אליהם (לחיצה מכבה/מדליקה)" aria-label="מגנט" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M6 4v7a6 6 0 0 0 12 0V4"/><path d="M10 4v7a2 2 0 0 0 4 0V4"/><path d="M6 7h4M14 7h4"/></svg></button>
+    <button type="button" data-tool="erase" title="מחק ציור בלחיצה" aria-label="מחק ציור"><svg viewBox="0 0 24 24"><path d="M15 4l5 5-9.5 9.5H6L3.5 16z"/><path d="M9 10l5 5M11 20h9"/></svg></button>
+    <button type="button" id="bUndo" title="בטל ציור אחרון (Ctrl+Z)" aria-label="בטל ציור אחרון"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+    <button type="button" id="bClearDraw" title="מחק את כל הציורים בגרף הפעיל" aria-label="מחק את כל הציורים"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+  </nav>
+  <main class="charts" id="charts" dir="ltr">
+    <div class="pane active" data-p="0"><div class="cv"></div><div class="legend"></div><button class="pbtn pmax" type="button" title="הגדל את הגרף הזה / חזור לשניים" aria-label="הגדל גרף"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button><button class="pbtn pfit" type="button" title="התאמה אוטומטית של הגרף" aria-label="התאמה אוטומטית">A</button><div class="pbanner" hidden></div><div class="selbar" hidden></div><div class="pempty" hidden></div></div>
+    <div class="vsplit" id="vsplit" title="גרור כדי לשנות רוחב · לחיצה כפולה מאפסת" role="separator" aria-orientation="vertical"></div>
+    <div class="pane" data-p="1"><div class="cv"></div><div class="legend"></div><button class="pbtn pmax" type="button" title="הגדל את הגרף הזה / חזור לשניים" aria-label="הגדל גרף"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button><button class="pbtn pfit" type="button" title="התאמה אוטומטית של הגרף" aria-label="התאמה אוטומטית">A</button><div class="pbanner" hidden></div><div class="selbar" hidden></div><div class="pempty" hidden></div></div>
+    <div class="bigpos" id="bigPos" hidden></div>
+    <div class="welcome" id="welcome" dir="rtl">
+      <div class="box">
+        <h1 id="wTitle">טוען…</h1>
+        <p id="wText"></p>
+        <ol id="wSteps" hidden>
+          <li>ב-TradingView פתח את <code>MNQ1!</code> (או <code>NQ1!</code>) בגרף של דקה.</li>
+          <li>גלול שמאלה עד שכל התקופה שאתה רוצה לתרגל נטענת בגרף.</li>
+          <li>בתפריט הלייאאוט (החץ ליד שם הלייאאוט) בחר <code>Export chart data</code>, ובפורמט הזמן בחר UNIX או ISO.</li>
+          <li>עשה את אותו דבר בגרף של <code>ES1!</code>.</li>
+          <li>בחר כאן את שני הקבצים ביחד. הסימול מזוהה לפי שם הקובץ.</li>
+        </ol>
+        <div class="bar" id="wActions"></div>
+        <textarea id="wPaste" class="paste" rows="2" placeholder="או הדבק כאן נתוני CSV (Ctrl+V)" aria-label="הדבקת נתוני CSV"></textarea>
+        <div class="msg" id="wMsg"></div>
+      </div>
+    </div>
+  </main>
+  </div>
+
+  <section class="dock" id="dock">
+    <div class="dock-grip" id="dockGrip" title="גרור כדי לשנות גובה" role="separator" aria-orientation="horizontal"></div>
+    <div class="dock-h">
+      <div class="tabs" role="tablist">
+        <button type="button" class="on" data-tab="trade" role="tab">מסחר</button>
+        <button type="button" data-tab="log" role="tab">עסקאות <span class="num" id="tCount"></span></button>
+      </div>
+      <span class="keys"><kbd>→</kbd> נר · <kbd>Shift</kbd>+<kbd>→</kbd> נר שלם · <kbd>←</kbd> אחורה · <kbd>רווח</kbd> נגן · <kbd>Alt</kbd>+<kbd>Enter</kbd> הגדלת גרף · <kbd>Shift</kbd>+לחיצה = מדידת נקודות · <kbd>Del</kbd> מחיקת ציור נבחר · קליק ימני = ביטול כלי · גלגלת = זום, גרירה על הציר הימני = מתיחה</span>
+      <span class="spacer"></span>
+      <button class="btn small" id="bExport" type="button">ייצוא CSV</button>
+      <button class="btn small" id="bDock" type="button">הסתר פאנל</button>
+    </div>
+    <div class="dock-b">
+      <div class="tradegrid" id="tabTrade">
+        <div class="col" id="ticket">
+          <div class="col-h"><h2>פקודה · <span id="tkSym" class="num">—</span></h2><span class="num muted" id="tkPrice" style="font-family:var(--mono)"></span></div>
+          <div class="bar" style="gap:6px">
+            <div class="seg" id="otype" role="group" aria-label="סוג פקודה">
+              <button type="button" data-t="mkt" class="on">שוק</button><button type="button" data-t="lmt">לימיט</button><button type="button" data-t="stp">סטופ</button>
+            </div>
+            <div class="inp" id="rowEntry" hidden style="flex:1;min-width:150px"><input id="fEntry" class="n" inputmode="decimal" autocomplete="off" placeholder="מחיר כניסה" aria-label="מחיר כניסה"><button class="pick" type="button" data-pick="fEntry" title="בחר מהגרף" aria-label="בחר מחיר כניסה מהגרף"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg></button></div>
+          </div>
+          <div class="r3">
+            <div><label for="fSL">סטופ</label><div class="inp"><input id="fSL" class="n" inputmode="decimal" autocomplete="off"><button class="pick" type="button" data-pick="fSL" title="בחר סטופ מהגרף" aria-label="בחר סטופ מהגרף"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg></button></div></div>
+            <div><label for="fTP">יעד</label><div class="inp"><input id="fTP" class="n" inputmode="decimal" autocomplete="off"><button class="pick" type="button" data-pick="fTP" title="בחר יעד מהגרף" aria-label="בחר יעד מהגרף"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg></button></div></div>
+            <div class="r2" style="gap:4px"><div><label for="fR">R</label><input id="fR" class="n" inputmode="decimal" value="2" autocomplete="off"></div><div><label for="fRisk">סיכון $</label><input id="fRisk" class="n" inputmode="decimal" value="250" autocomplete="off"></div></div>
+          </div>
+          <div class="calc" id="calc"></div>
+          <div class="blocked" id="blocked" hidden></div>
+          <div class="buysell">
+            <button type="button" class="sell" id="bSell">מכירה<small class="num" id="sellPx"></small></button>
+            <button type="button" class="buy" id="bBuy">קנייה<small class="num" id="buyPx"></small></button>
+          </div>
+          <div class="r2"><div><label for="fTag">סטאפ</label><input id="fTag" type="text" value="SK9" autocomplete="off"></div><div></div></div>
+        </div>
+        <div class="col" id="posCol">
+          <div class="col-h"><h2>פוזיציה</h2><span class="chip" id="posChip">אין</span></div>
+          <p class="muted" id="posEmpty" style="margin:0">אין פוזיציה פתוחה. קבע סטופ (⌖ ולחיצה על הגרף) ואז קנייה או מכירה.</p>
+          <div id="posBody" hidden>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><div class="pnl num" id="posPnl">$0</div><div class="num" id="posR" style="font-family:var(--mono);font-size:12.5px"></div></div>
+            <dl class="kv" id="posKv" style="margin-top:6px"></dl>
+            <div class="r2" style="margin-top:6px"><div><label for="pSL">סטופ</label><input id="pSL" class="n" inputmode="decimal" autocomplete="off"></div><div><label for="pTP">יעד</label><input id="pTP" class="n" inputmode="decimal" autocomplete="off"></div></div>
+            <div class="btnrow" style="margin-top:6px"><button class="btn small" id="bPosUpd" type="button">עדכן</button><button class="btn small" id="bBE" type="button">סטופ לכניסה</button><button class="btn small danger" id="bClose" type="button">סגור בשוק</button></div>
+          </div>
+          <div id="pendBody" hidden><dl class="kv" id="pendKv"></dl><div class="btnrow" style="margin-top:6px"><button class="btn small danger" id="bCancel" type="button">בטל פקודה</button></div></div>
+        </div>
+        <div class="col">
+          <div class="col-h"><h2>תוצאות הסשן</h2><span class="muted num" id="stN"></span></div>
+          <div class="bal"><span class="muted">יתרה</span><span class="v num" id="stBal"></span></div>
+          <svg class="spark" id="spark" viewBox="0 0 300 36" preserveAspectRatio="none" aria-hidden="true"></svg>
+          <div class="sgrid">
+            <div><span>נטו</span><b id="stNet"></b></div><div><span>הצלחה</span><b id="stWR"></b></div><div><span>Profit Factor</span><b id="stPF"></b></div>
+            <div><span>R ממוצע</span><b id="stAR"></b></div><div><span>ירידה מקס׳</span><b id="stDD"></b></div><div><span>סה״כ R</span><b id="stTR"></b></div>
+          </div>
+          <div class="today" id="stToday"></div>
+          <div class="foot">גרפים: <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView Lightweight Charts</a></div>
+        </div>
+      </div>
+      <div class="tscroll" id="tabLog" hidden>
+        <table class="tl"><thead><tr><th>#</th><th>סימול</th><th>כניסה</th><th>צד</th><th>כמות</th><th>מחיר כניסה</th><th>סטופ</th><th>יעד</th><th>יציאה</th><th>סיבה</th><th>נק׳</th><th>R</th><th>רווח/הפסד</th><th>MFE / MAE</th><th>סטאפ</th><th>הערה</th></tr></thead><tbody id="tBody"></tbody></table>
+        <div class="tempty" id="tEmpty">עוד אין עסקאות בסשן.</div>
+      </div>
+    </div>
+  </section>
+
+  <div id="toast" aria-live="polite"></div>
+
+  <dialog id="dlgSess">
+    <form class="dlg" id="fSess" method="dialog">
+      <div class="dlg-h"><h2 id="sessTitle">סשן חדש</h2><button class="btn small" type="button" data-close>סגור</button></div>
+      <div class="dlg-b">
+        <div class="fgrid">
+          <div class="wide"><label for="sName">שם הסשן</label><input id="sName" type="text" autocomplete="off"></div>
+          <fieldset><legend class="fl">גרף שמאל</legend>
+            <label for="sDs0">נתונים</label><select id="sDs0"></select>
+            <div class="r2"><div><label for="sIn0">מכשיר</label><select id="sIn0"><option>MNQ</option><option>NQ</option><option>MES</option><option>ES</option><option value="X">אחר</option></select></div><div><label for="sMax0">מקס׳ חוזים</label><input id="sMax0" class="n" type="number" min="1" step="1"></div></div>
+            <div class="r2" id="sCus0" hidden><div><label for="sPV0">$ לנקודה</label><input id="sPV0" class="n" type="number" step="any" min="0"></div><div><label for="sTk0">טיק</label><input id="sTk0" class="n" type="number" step="any" min="0"></div></div>
+          </fieldset>
+          <fieldset><legend class="fl">גרף ימין</legend>
+            <label for="sDs1">נתונים</label><select id="sDs1"></select>
+            <div class="r2"><div><label for="sIn1">מכשיר</label><select id="sIn1"><option>MNQ</option><option>NQ</option><option>MES</option><option>ES</option><option value="X">אחר</option></select></div><div><label for="sMax1">מקס׳ חוזים</label><input id="sMax1" class="n" type="number" min="1" step="1"></div></div>
+            <div class="r2" id="sCus1" hidden><div><label for="sPV1">$ לנקודה</label><input id="sPV1" class="n" type="number" step="any" min="0"></div><div><label for="sTk1">טיק</label><input id="sTk1" class="n" type="number" step="any" min="0"></div></div>
+          </fieldset>
+          <div id="sStartA"><label for="sDate">תאריך התחלה</label><input id="sDate" type="date"></div>
+          <div id="sStartB"><label for="sTime">שעה (שעון ישראל)</label><input id="sTime" type="time"></div>
+          <div><label for="sBal">יתרת פתיחה ($)</label><input id="sBal" class="n" type="number" step="any" min="0"></div>
+          <div><label for="sRisk">סיכון לעסקה ($)</label><input id="sRisk" class="n" type="number" step="any" min="0"></div>
+          <div><label for="sRR">יעד ברירת מחדל (R)</label><input id="sRR" class="n" type="number" step="any" min="0"></div>
+          <div><label for="sComm">עמלה לחוזה, הלוך-חזור ($)</label><input id="sComm" class="n" type="number" step="any" min="0"></div>
+          <div><label for="sWinFrom">חלון מסחר מ- (ישראל)</label><input id="sWinFrom" type="time"></div>
+          <div><label for="sWinTo">עד</label><input id="sWinTo" type="time"></div>
+          <div class="wide"><label class="check"><input id="sFlat" type="checkbox"> סגירה אוטומטית ב-16:45 ניו יורק (כמו בלוסיד)</label></div>
+          <div class="wide" style="flex-direction:row;align-items:center;gap:8px;flex-wrap:wrap">
+            <label class="check"><input id="sLim" type="checkbox"> מגבלה יומית:</label>
+            <input id="sMaxL" class="n" type="number" min="1" step="1" style="width:56px" aria-label="מקסימום הפסדים"> <span class="muted">הפסדים או</span>
+            <input id="sMaxW" class="n" type="number" min="1" step="1" style="width:56px" aria-label="מקסימום רווחים"> <span class="muted">רווחים, ואז נעצרים</span>
+          </div>
+        </div>
+        <div class="msg" id="sessMsg"></div>
+      </div>
+      <div class="dlg-f">
+        <button class="btn primary" type="submit" id="bSessSave">צור סשן</button>
+        <button class="btn" type="button" data-close>ביטול</button>
+        <span class="spacer"></span>
+        <button class="btn danger" type="button" id="bSessDel" hidden>מחק סשן</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgInd">
+    <form class="dlg" id="fInd" method="dialog">
+      <div class="dlg-h"><h2>אינדיקטורים</h2><button class="btn small" type="button" data-close>סגור</button></div>
+      <div class="dlg-b">
+        <fieldset><legend class="fl">סשנים (Killzones) · שעון ניו יורק</legend>
+          <label class="check"><input id="iSessOn" type="checkbox"> הצג סשנים (בטיים פריים של שעה ומטה)</label>
+          <div id="iSessList" style="display:flex;flex-direction:column;gap:6px"></div>
+          <label class="check"><input id="iSessLines" type="checkbox"> קווי גבוה ונמוך של כל סשן, עד שהמחיר לוקח אותם</label>
+        </fieldset>
+        <fieldset><legend class="fl">Fair Value Gaps</legend>
+          <label class="check"><input id="iFvgOn" type="checkbox"> הצג FVG</label>
+          <div class="r3">
+            <div><label for="iFvgSrc">טיים פריים</label><select id="iFvgSrc"><option value="0">של הגרף</option><option value="60">1m</option><option value="180">3m</option><option value="300">5m</option><option value="900">15m</option><option value="1800">30m</option><option value="3600">1h</option><option value="14400">4h</option></select></div>
+            <div><label for="iFvgMax">כמה להציג מכל צד</label><input id="iFvgMax" class="n" type="number" min="1" step="1"></div>
+            <div><label for="iFvgMin">גודל מינימלי (נק׳)</label><input id="iFvgMin" class="n" type="number" min="0" step="0.25"></div>
+          </div>
+          <label class="check"><input id="iFvgInv" type="checkbox"> הצג IFVG: FVG שנסגר מעברו והתהפך</label>
+          <p class="muted" style="margin:0;font-size:12px">FVG נמחק כשנר נסגר מעבר לצד הרחוק שלו. אם IFVG פעיל, הוא הופך לאזור מקווקו בצבע ההפוך עד שנר נסגר חזרה מעבר לו.</p>
+        </fieldset>
+      </div>
+      <div class="dlg-f"><button class="btn primary" type="submit">שמור</button><button class="btn" type="button" data-close>ביטול</button><span class="spacer"></span><button class="btn" type="button" id="bIndReset">ברירת מחדל</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgFib">
+    <form class="dlg" id="fFib" method="dialog">
+      <div class="dlg-h"><h2>פיבונאצ'י</h2><button class="btn small" type="button" data-close>סגור</button></div>
+      <div class="dlg-b">
+        <div style="display:flex;flex-direction:column;gap:4px"><label for="fbLv">רמות, מופרדות בפסיק</label><input id="fbLv" class="n" type="text" autocomplete="off"></div>
+        <p class="muted" style="margin:0;font-size:12px">רמה 1 היא הנקודה הראשונה שלחצת עליה, ו-0 היא השנייה. רמות שליליות הן הרחבות מעבר לנקודה השנייה (יעדים). למשל, ציור מהשפל לשיא נותן את אזור ה-OTE בין 0.618 ל-0.79.</p>
+        <label class="check"><input id="fbExt" type="checkbox"> הארך את הקווים ימינה עד סוף הגרף</label>
+        <label class="check"><input id="fbFill" type="checkbox"> מילוי רקע בין הרמות</label>
+        <label class="check"><input id="fbPx" type="checkbox"> הצג את המחיר ליד כל רמה</label>
+      </div>
+      <div class="dlg-f"><button class="btn primary" type="submit">שמור</button><button class="btn" type="button" data-close>ביטול</button><span class="spacer"></span><button class="btn" type="button" id="bFibReset">ברירת מחדל</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgData">
+    <div class="dlg">
+      <div class="dlg-h"><h2>נתונים היסטוריים</h2><button class="btn small" type="button" data-close>סגור</button></div>
+      <div class="dlg-b">
+        <div class="dslist" id="dsList"></div>
+        <div class="help">
+          <b style="color:var(--fg)">איך מוציאים נתונים מ-TradingView</b>
+          <ol>
+            <li>פתח את <span class="num">MNQ1!</span> בגרף של דקה, וגלול שמאלה עד שכל התקופה נטענת.</li>
+            <li>תפריט הלייאאוט ← Export chart data ← פורמט זמן UNIX או ISO.</li>
+            <li>חזור על זה עם <span class="num">ES1!</span>, והעלה את שני הקבצים ביחד.</li>
+          </ol>
+          הסימול מזוהה לפי שם הקובץ. קבצים של אותו סימול מתחברים לסט אחד, כך שאפשר להוסיף עוד ימים בכל פעם.
+        </div>
+        <div class="fgrid">
+          <div class="wide"><label for="impFile">קבצי CSV</label><input id="impFile" type="file" accept=".csv,.txt,text/csv" multiple></div>
+          <div><label for="impSym">סימול אם לא זוהה בשם הקובץ</label><select id="impSym"><option>MNQ</option><option>NQ</option><option>ES</option><option>MES</option></select></div>
+          <div><label for="impTZ">אזור זמן לזמנים בלי אזור</label><select id="impTZ"><option value="America/New_York">ניו יורק (ET)</option><option value="America/Chicago">שיקגו (CT)</option><option value="UTC">UTC</option><option value="Asia/Jerusalem">ישראל</option></select></div>
+          <div class="wide"><label class="check"><input id="impMerge" type="checkbox" checked> חבר לנתונים קיימים של אותו סימול</label></div>
+        </div>
+        <textarea id="impPaste" class="paste" rows="2" placeholder="או הדבק כאן נתוני CSV (Ctrl+V)" aria-label="הדבקת נתוני CSV"></textarea>
+        <div class="msg" id="impMsg"></div>
+      </div>
+      <div class="dlg-f"><button class="btn primary" type="button" id="bImport">ייבא</button></div>
+    </div>
+  </dialog>
+  <input type="file" id="wFile" accept=".csv,.txt,text/csv" multiple hidden>
+</div>
+
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+(() => {
+'use strict';
+const LW = window.LightweightCharts;
+const NY = 'America/New_York', IL = 'Asia/Jerusalem';
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const TFS = [[15,'15s'],[30,'30s'],[60,'1m'],[120,'2m'],[180,'3m'],[300,'5m'],[600,'10m'],[900,'15m'],[1800,'30m'],[2700,'45m'],[3600,'1h'],[7200,'2h'],[10800,'3h'],[14400,'4h'],[86400,'1D'],[604800,'1W'],[2592000,'1M']];
+const tfLabel = s => (TFS.find(x => x[0] === s) || [0, s + 's'])[1];
+const INSTR = {
+  MNQ: { pv: 2, tick: .25, max: 40, desc: 'Micro E-mini Nasdaq-100 Index Futures' },
+  NQ: { pv: 20, tick: .25, max: 4, desc: 'E-mini Nasdaq-100 Index Futures' },
+  MES: { pv: 5, tick: .25, max: 40, desc: 'Micro E-mini S&P 500 Index Futures' },
+  ES: { pv: 50, tick: .25, max: 4, desc: 'S&P 500 E-mini Futures' },
+};
+/* chart look copied from the user's own chart settings */
+const CH = { bg: '#7E7C7C', up: '#808080', down: '#2E2E2E', edge: '#000000', text: '#DBDBDB', draw: '#1B4FE0', win: '#00C853', loss: '#D50000', entry: '#FFFFFF', pend: '#FFD54F', long: '#0B4FFF', short: '#E01B24' };
+const WIN = 6000, ROOT = 'bt/main';
+const FONT = '-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif';
+const POS_UP = '#089981', POS_DN = '#F23645';
+/* Fib levels: 1 = first click, 0 = second click (TradingView convention). OTE levels included for ICT-style work. */
+const FIB_DEF = { levels: [1, 0.79, 0.705, 0.618, 0.5, 0.382, 0.236, 0, -0.27, -0.618, -1], ext: false, fill: true, px: true };
+const FIB_COL = { '0': '#141414', '1': '#141414', '0.236': '#B71C1C', '0.382': '#BF4A00', '0.5': '#1B5E20', '0.618': '#00695C', '0.65': '#00695C', '0.705': '#005B66', '0.786': '#0D47A1', '0.79': '#0D47A1', '-0.27': '#4A148C', '-0.272': '#4A148C', '-0.618': '#880E4F', '-0.62': '#880E4F', '-1': '#B71C1C', '-1.618': '#0D47A1', '-2': '#1A237E', '-2.5': '#4A148C', '-4': '#B71C1C', '1.618': '#0D47A1', '2': '#1A237E', '2.618': '#4A148C' };
+const FIB_PAL = ['#0D47A1', '#B71C1C', '#1B5E20', '#BF4A00', '#4A148C', '#005B66', '#880E4F'];
+const fibCol = (l, k) => FIB_COL[String(l)] || FIB_PAL[k % FIB_PAL.length];
+const DNAME = { h: 'קו אופקי', hray: 'קרן אופקית', v: 'קו אנכי', l: 'קו מגמה', ray: 'קרן', r: 'מלבן', fib: "פיבונאצ'י", pos: 'פוזיציה' };
+const TWO_PT = { line: 1, ray: 1, rect: 1, fib: 1, long: 1, short: 1 };
+const DRAW_COL = '#000000', SWATCH = ['#000000', '#FFFFFF', '#1B4FE0', '#D50000', '#00A86B', '#F5B000'];
+const dcol = d => (d.c && d.c !== 'multi') ? d.c : DRAW_COL;
+const ink = c => { const m = /^#([0-9a-f]{6})$/i.exec(c || ''); if (!m) return '#FFFFFF'; const n = parseInt(m[1], 16); return (0.299 * (n >> 16 & 255) + 0.587 * (n >> 8 & 255) + 0.114 * (n & 255)) > 160 ? '#000000' : '#FFFFFF'; };
+
+/* ---------- utils ---------- */
+const pad = n => String(n).padStart(2, '0');
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const num = s => { const v = parseFloat(String(s ?? '').replace(/,/g, '').trim()); return isFinite(v) ? v : NaN; };
+const nf2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtP = p => (p == null || !isFinite(p)) ? '—' : nf2.format(p);
+const fmtUsd = (v, sign = true) => (!isFinite(v) ? '—' : (v < 0 ? '-' : (sign && v > 0 ? '+' : '')) + '$' + Math.abs(v).toLocaleString('en-US', { maximumFractionDigits: 0 }));
+const fmtR = v => !isFinite(v) ? '—' : (v > 0 ? '+' : '') + v.toFixed(2) + 'R';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function lowerBound(a, x) { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] < x) lo = m + 1; else hi = m; } return lo; }
+function upperBound(a, x) { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] <= x) lo = m + 1; else hi = m; } return lo; }
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+function alpha(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; }
+
+/* ---------- time zones ---------- */
+const fmts = {}, offCache = new Map();
+function tzOff(tz, t) {
+  const k = tz + ':' + Math.floor(t / 1800);
+  let v = offCache.get(k); if (v !== undefined) return v;
+  const f = fmts[tz] || (fmts[tz] = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+  const p = {}; for (const x of f.formatToParts(new Date(t * 1000))) p[x.type] = x.value;
+  v = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second) / 1000 - t;
+  offCache.set(k, v); return v;
+}
+function localToUTC(tz, y, mo, d, hh, mm) { const g = Date.UTC(y, mo, d, hh, mm) / 1000; let t = g - tzOff(tz, g); t = g - tzOff(tz, t); return t; }
+function parts(tz, t) { const d = new Date((t + tzOff(tz, t)) * 1000); return { y: d.getUTCFullYear(), mo: d.getUTCMonth(), d: d.getUTCDate(), h: d.getUTCHours(), mi: d.getUTCMinutes(), wd: d.getUTCDay() }; }
+const WD = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'];
+function fmtDT(tz, t, withDay = true) { const p = parts(tz, t); return `${withDay ? WD[p.wd] + ' ' : ''}${pad(p.d)}.${pad(p.mo + 1)}.${String(p.y).slice(2)} ${pad(p.h)}:${pad(p.mi)}`; }
+function fmtHM(tz, t) { const p = parts(tz, t); return `${pad(p.h)}:${pad(p.mi)}`; }
+function fmtDateInput(t, tz = IL) { const p = parts(tz, t); return `${p.y}-${pad(p.mo + 1)}-${pad(p.d)}`; }
+const tradingDay = t => Math.floor((t + tzOff(NY, t) + 21600) / 86400);
+
+/* ---------- state ---------- */
+let db = null, assets = null, downloads = null;
+let datasets = [], localDs = [], sessions = [], memSessions = [];
+const memTrades = new Map();
+const allDs = () => [...datasets, ...localDs];
+const dataCache = new Map();
+let S = null, now = 0;
+let trades = new Map();
+let playing = false, playTimer = null;
+let tool = 'none', pickField = null, drawStart = null, drawHover = null, meas = null, sel = null, drag = null, clearArm = 0, shiftDown = false;
+let unsubTrades = null, bootPicked = false, pendingSave = false, userActed = false, syncing = false;
+const TK = { type: 'mkt', tpManual: false };
+const panes = [0, 1].map(i => ({ i, el: $(`.pane[data-p="${i}"]`), chart: null, series: null, prim: null, D: null, AG: new Map(), cur: -1, disp: { tf: 0, ds: '', start: 0, last: -1 }, dispCT: [], hLines: [], posLines: [], posKey: '', hovering: false, ignoreUntil: 0, y: null, hvd: null, hvdKey: '' }));
+const act = () => panes[S ? S.active || 0 : 0];
+const cfg = P => (S && S.panes[P.i]) || {};
+
+/* ---------- data ---------- */
+function detectBase(t) {
+  const cnt = new Map(); const n = Math.min(t.length, 5000);
+  for (let i = 1; i < n; i++) { const d = t[i] - t[i - 1]; if (d > 0 && d < 86400 * 3) cnt.set(d, (cnt.get(d) || 0) + 1); }
+  let best = 60, bc = -1; for (const [d, c] of cnt) if (c > bc) { bc = c; best = d; } return best;
+}
+function makeData(meta, rows) {
+  if (rows.some(r => !(r[5] > 0))) { const fb = detectBase(Float64Array.from(rows.map(r => r[0]).sort((a, b) => a - b))); for (const r of rows) if (!(r[5] > 0)) r[5] = fb; }
+  rows.sort((a, b) => (a[0] - b[0]) || (a[5] - b[5]));
+  const keep = []; let lastEnd = -Infinity;
+  for (const r of rows) { if (r[0] < lastEnd) continue; keep.push(r); lastEnd = r[0] + r[5]; }
+  const n = keep.length, t = new Float64Array(n), o = new Float64Array(n), h = new Float64Array(n), l = new Float64Array(n), c = new Float64Array(n), r = new Float64Array(n), e = new Float64Array(n);
+  let base = Infinity; const ress = new Set();
+  keep.forEach((x, i) => { t[i] = x[0]; o[i] = x[1]; h[i] = x[2]; l[i] = x[3]; c[i] = x[4]; r[i] = x[5]; e[i] = x[0] + x[5]; if (x[5] < base) base = x[5]; ress.add(x[5]); });
+  return { id: meta.id, meta, n, t, o, h, l, c, r, e, base: isFinite(base) ? base : 60, ress: [...ress].sort((a, b) => a - b) };
+}
+function keyFn(tf) {
+  const tday = t => { const off = tzOff(NY, t); return [Math.floor((t + off + 21600) / 86400), off]; };
+  if (tf === 2592000) return t => { const [d, off] = tday(t), dt = new Date(d * 86400000); return Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), 1) / 1000 - 21600 - off; };
+  if (tf === 604800) return t => { const [d, off] = tday(t); return (d - ((d + 3) % 7)) * 86400 - 21600 - off; };
+  if (tf >= 86400) return t => { const [d, off] = tday(t); return d * 86400 - 21600 - off; };
+  if (3600 % tf === 0) return t => Math.floor(t / tf) * tf;
+  return t => { const off = tzOff(NY, t), loc = t + off, ss = Math.floor((loc - 64800) / 86400) * 86400 + 64800; return ss + Math.floor((loc - ss) / tf) * tf - off; };
+}
+function bucketEnd(A, b) { const tf = A.tf; if (tf === 86400) return A.T[b] + 82800; if (tf === 604800) return A.T[b] + 428400; if (tf === 2592000) return b + 1 < A.m ? A.T[b + 1] - 3600 : A.T[b] + tf; return A.T[b] + tf; }
+function agg(P, tf) {
+  let A = P.AG.get(tf); if (A) { if (P.AG.size > 1) { P.AG.delete(tf); P.AG.set(tf, A); } return A; }
+  const D = P.D, kf = keyFn(tf), n = D.n, b2 = new Int32Array(n);
+  const T = [], O = [], H = [], L = [], Cl = [], St = [], En = [];
+  let cur = -Infinity, bi = -1;
+  for (let i = 0; i < n; i++) {
+    const k = kf(D.t[i]);
+    if (k > cur) { cur = k; bi++; T.push(k); O.push(D.o[i]); H.push(D.h[i]); L.push(D.l[i]); Cl.push(D.c[i]); St.push(i); En.push(i); }
+    else { if (D.h[i] > H[bi]) H[bi] = D.h[i]; if (D.l[i] < L[bi]) L[bi] = D.l[i]; Cl[bi] = D.c[i]; En[bi] = i; }
+    b2[i] = bi;
+  }
+  A = { tf, T: Float64Array.from(T), O: Float64Array.from(O), H: Float64Array.from(H), L: Float64Array.from(L), C: Float64Array.from(Cl), S: Int32Array.from(St), E: Int32Array.from(En), b2, m: T.length };
+  P.AG.set(tf, A);
+  /* keep memory bounded with years of data: only the 3 most recently used timeframes stay cached */
+  while (P.AG.size > 3) {
+    const k = P.AG.keys().next().value; P.AG.delete(k);
+    if (P.segs) for (const sk of [...P.segs.keys()]) if (sk.includes('|C' + k + '|')) P.segs.delete(sk);
+    if (P.fvgAll) for (const fk of [...P.fvgAll.keys()]) if (fk.split('|')[1] === String(k)) P.fvgAll.delete(fk);
+  }
+  return A;
+}
+function candleAt(P, A, b, cur) {
+  const D = P.D, s = A.S[b], e = Math.min(A.E[b], cur);
+  if (e === A.E[b]) return { o: A.O[b], h: A.H[b], l: A.L[b], c: A.C[b] };
+  let h = -Infinity, l = Infinity; for (let i = s; i <= e; i++) { if (D.h[i] > h) h = D.h[i]; if (D.l[i] < l) l = D.l[i]; }
+  return { o: D.o[s], h, l, c: D.c[e] };
+}
+const bucketAt = (A, t) => Math.max(0, upperBound(A.T, t) - 1);
+const ct = t => t + tzOff(S.tz, t);
+const curTF = P => (S.tf >= P.D.base && S.tf % P.D.base === 0) ? S.tf : P.D.base;
+const cursorAt = (D, t) => upperBound(D.e, t) - 1;
+const roundTick = (P, p) => { const k = cfg(P).tick || .25; return Math.round(p / k) * k; };
+const lastPx = P => (P.D && P.cur >= 0) ? P.D.c[P.cur] : NaN;
+
+/* ---------- CSV import ---------- */
+function splitRow(line, sep) {
+  if (line.indexOf('"') < 0) return line.split(sep).map(x => x.trim());
+  const out = []; let cur = '', q = false;
+  for (const ch of line) { if (ch === '"') q = !q; else if (ch === sep && !q) { out.push(cur.trim()); cur = ''; } else cur += ch; }
+  out.push(cur.trim()); return out;
+}
+function parseTime(s, tz) {
+  s = String(s || '').trim().replace(/^"|"$/g, ''); if (!s) return NaN;
+  let m;
+  if (/^\d{8}$/.test(s)) return localToUTC(tz, +s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8), 0, 0);
+  if (/^\d+(\.\d+)?$/.test(s)) { let v = +s; if (v > 1e11) v /= 1000; return Math.floor(v); }
+  if (/(Z|[+-]\d{2}:?\d{2})$/.test(s) && /\d{1,2}:\d{2}/.test(s)) { const v = Date.parse(s.replace(' ', 'T')); if (isFinite(v)) return Math.floor(v / 1000); }
+  if ((m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?/))) return localToUTC(tz, +m[1], +m[2] - 1, +m[3], +m[4], +m[5]) + (+m[6] || 0);
+  if ((m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})[ T,]+(\d{1,2}):(\d{2})(?::(\d{2}))?/))) {
+    const a = +m[1], b = +m[2]; let mo, d; if (s.includes('.') || a > 12) { d = a; mo = b; } else { mo = a; d = b; }
+    return localToUTC(tz, +m[3], mo - 1, d, +m[4], +m[5]) + (+m[6] || 0);
+  }
+  if ((m = s.match(/^(\d{4})(\d{2})(\d{2})[ T]?(\d{2}):?(\d{2}):?(\d{2})?/))) return localToUTC(tz, +m[1], +m[2] - 1, +m[3], +m[4], +m[5]) + (+m[6] || 0);
+  if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/))) return localToUTC(tz, +m[1], +m[2] - 1, +m[3], 0, 0);
+  const v = Date.parse(s); return isFinite(v) ? Math.floor(v / 1000) : NaN;
+}
+function parseAny(text, tz) {
+  const lines = text.replace(/^﻿/, '').split(/\r?\n/);
+  let first = 0; while (first < lines.length && !lines[first].trim()) first++;
+  const sample = lines[first] || '';
+  if (/^t,o,h,l,c(,r)?$/.test(sample.trim())) return parseCompact(lines.slice(first).join('\n'));   /* our own compact format keeps each bar's timeframe */
+  const sep = [',', ';', '\t'].map(s => [s, sample.split(s).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const c0 = splitRow(sample, sep);
+  const hdr = c0.map(x => x.toLowerCase().replace(/[^a-z_]/g, ''));
+  const hasH = hdr.some(h => ['open', 'close', 'high', 'low', 'time', 'date', 'datetime', 'timestamp'].includes(h));
+  let ti = -1, di = -1, oi = -1, hi = -1, li = -1, ci = -1, ri = -1;
+  if (hasH) {
+    hdr.forEach((h, k) => {
+      if (['time', 'datetime', 'timestamp', 'date_time', 'datetimeutc', 'gmttime', 'localtime', 'timeutc'].includes(h)) { if (ti < 0) ti = k; }
+      else if (h === 'date' || h === 'day') { if (di < 0) di = k; }
+      else if (h === 'open' || h === 'o') { if (oi < 0) oi = k; }
+      else if (h === 'high' || h === 'h') { if (hi < 0) hi = k; }
+      else if (h === 'low' || h === 'l') { if (li < 0) li = k; }
+      else if (h === 'close' || h === 'c' || h === 'last') { if (ci < 0) ci = k; }
+      else if (h === 'r') { if (ri < 0) ri = k; }
+    });
+    first++;
+  } else if (c0.length >= 6 && /:/.test(c0[1]) && !/:/.test(c0[0])) { di = 0; ti = 1; oi = 2; hi = 3; li = 4; ci = 5; }
+  else { ti = 0; oi = 1; hi = 2; li = 3; ci = 4; }
+  if (ti < 0 && di >= 0) { ti = di; di = -1; }
+  if (ti < 0 || oi < 0 || hi < 0 || li < 0 || ci < 0) throw new Error('לא מצאתי בקובץ עמודות של זמן, פתיחה, גבוה, נמוך וסגירה.');
+  const dec = sep === ';' ? (x => +String(x).replace(',', '.')) : (x => +x);
+  const rows = [];
+  for (let k = first; k < lines.length; k++) {
+    const line = lines[k]; if (!line || !line.trim()) continue;
+    const c = splitRow(line, sep);
+    const t = parseTime(di >= 0 ? c[di] + ' ' + c[ti] : c[ti], tz);
+    const o = dec(c[oi]), h = dec(c[hi]), l = dec(c[li]), cl = dec(c[ci]);
+    if (!isFinite(t) || !isFinite(o) || !isFinite(h) || !isFinite(l) || !isFinite(cl)) continue;
+    rows.push([t, o, Math.max(h, o, cl), Math.min(l, o, cl), cl, ri >= 0 ? (+c[ri] || 0) : 0]);
+  }
+  return rows;
+}
+async function gzEncode(text) {
+  const buf = new Uint8Array(await new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer());
+  let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+  return 'GZB64:' + btoa(s);
+}
+async function gzDecode(t) {
+  const bin = atob(t.slice(t.indexOf(':') + 1).replace(/\s+/g, '')), u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+}
+const maybeGz = async t => { const x = t.trimStart(); return x.startsWith('GZB64:') ? gzDecode(x) : t; };
+/* fast path for our own stored format (already sorted, no overlaps): fills typed arrays directly */
+function dataFromCompact(meta, text) {
+  let n = 1, q = text.indexOf('\n'); while (q >= 0) { n++; q = text.indexOf('\n', q + 1); }
+  const t = new Float64Array(n), o = new Float64Array(n), h = new Float64Array(n), l = new Float64Array(n), c = new Float64Array(n), r = new Float64Array(n), e = new Float64Array(n);
+  let m = 0, i = text.indexOf('\n') + 1, lastEnd = -Infinity, base = Infinity; const ress = new Set();
+  while (i > 0 && i < text.length) {
+    let j = text.indexOf('\n', i); if (j < 0) j = text.length;
+    if (j > i) {
+      const a = text.slice(i, j).split(','), tt = +a[0], rr = a.length > 5 ? +a[5] : 0;
+      if (!(rr > 0) || !(tt >= lastEnd)) return makeData(meta, parseCompact(text));
+      t[m] = tt; o[m] = +a[1]; h[m] = +a[2]; l[m] = +a[3]; c[m] = +a[4]; r[m] = rr; e[m] = tt + rr; lastEnd = tt + rr;
+      if (rr < base) base = rr; ress.add(rr); m++;
+    }
+    i = j + 1;
+  }
+  const cut = x => x.slice(0, m);
+  return { id: meta.id, meta, n: m, t: cut(t), o: cut(o), h: cut(h), l: cut(l), c: cut(c), r: cut(r), e: cut(e), base: isFinite(base) ? base : 60, ress: [...ress].sort((a, b) => a - b) };
+}
+function parseCompact(text) { const rows = []; const L = text.split('\n'); for (let i = 1; i < L.length; i++) { if (!L[i]) continue; const c = L[i].split(','); rows.push([+c[0], +c[1], +c[2], +c[3], +c[4], c.length > 5 ? +c[5] : 0]); } return rows; }
+function toCompact(d) { const out = ['t,o,h,l,c,r']; for (let i = 0; i < d.n; i++) out.push(`${d.t[i]},${d.o[i]},${d.h[i]},${d.l[i]},${d.c[i]},${d.r[i]}`); return out.join('\n'); }
+function detectSym(name) {
+  const u = String(name || '').toUpperCase();
+  if (/MNQ/.test(u)) return 'MNQ'; if (/MES/.test(u)) return 'MES';
+  if (/(^|[^A-Z])NQ/.test(u) || /NASDAQ/.test(u)) return 'NQ';
+  if (/(^|[^A-Z])ES/.test(u) || /S&P|SP500|SPX/.test(u)) return 'ES';
+  return '';
+}
+
+/* ---------- chart panes ---------- */
+class PanePrim {
+  constructor(P) {
+    this.P = P; this._req = null;
+    this._pv = [{ zOrder: () => 'bottom', renderer: () => ({ draw: tg => drawInd(P, tg) }) }, { zOrder: () => 'normal', renderer: () => ({ draw: tg => drawPane(P, tg) }) }];
+    const fs = 12, h = Math.round(fs + 5 * fs / 12);
+    this._av = [
+      { coordinate: () => -10000, fixedCoordinate: () => P.y ?? -10000, text: () => fmtP(lastPx(P)), textColor: () => '#FFFFFF', backColor: () => '#000000', visible: () => P.y != null, tickVisible: () => true },
+      { coordinate: () => -10000, fixedCoordinate: () => (P.y ?? -10000) + h, text: () => countdown(P), textColor: () => '#BDBDBD', backColor: () => '#000000', visible: () => P.y != null, tickVisible: () => false },
+    ];
+  }
+  attached(p) { this._req = p.requestUpdate; }
+  detached() { this._req = null; }
+  updateAllViews() { const P = this.P, px = lastPx(P); P.y = isFinite(px) && P.disp.last >= 0 ? P.series.priceToCoordinate(px) : null; }
+  paneViews() { return this._pv; }
+  priceAxisViews() { return this._av; }
+  req() { this._req && this._req(); }
+}
+function countdown(P) {
+  if (!S || !P.D || P.cur < 0) return '';
+  const A = agg(P, curTF(P)), b = A.b2[P.cur];
+  let s = Math.max(0, Math.round(bucketEnd(A, b) - now)); if (s === 0) s = Math.min(A.tf, 82800);
+  if (s >= 86400) { const dd = Math.floor(s / 86400); return `${dd}d ${pad(Math.floor(s % 86400 / 3600))}h`; }
+  const hh = Math.floor(s / 3600), mm = Math.floor(s % 3600 / 60), ss = s % 60;
+  return hh > 0 || A.tf >= 3600 ? `${pad(hh)}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`;
+}
+function initPane(P) {
+  const ch = LW.createChart($('.cv', P.el), {
+    autoSize: true,
+    layout: { background: { type: 'solid', color: CH.bg }, textColor: CH.text, fontFamily: '-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif', fontSize: 12 },
+    grid: { vertLines: { visible: false }, horzLines: { visible: false } },
+    rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.08 } },
+    timeScale: { borderVisible: false, timeVisible: true, secondsVisible: false, rightOffset: 12, barSpacing: 7, shiftVisibleRangeOnNewBar: true },
+    crosshair: { mode: LW.CrosshairMode.Normal, vertLine: { color: 'rgba(0,0,0,.55)', style: LW.LineStyle.Dashed, width: 1, labelBackgroundColor: '#000000' }, horzLine: { color: 'rgba(0,0,0,.55)', style: LW.LineStyle.Dashed, width: 1, labelBackgroundColor: '#000000' } },
+    localization: { locale: 'en-US', priceFormatter: p => fmtP(p), dateFormat: 'dd MMM yy' },
+    handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: { time: true, price: true }, axisDoubleClickReset: { time: true, price: true } },
+    handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
+  });
+  P.chart = ch;
+  P.series = ch.addCandlestickSeries({ upColor: CH.up, downColor: CH.down, borderVisible: true, borderUpColor: CH.edge, borderDownColor: CH.edge, wickUpColor: CH.edge, wickDownColor: CH.edge, lastValueVisible: false, priceLineVisible: true, priceLineColor: '#000000', priceLineStyle: LW.LineStyle.Dotted, priceLineWidth: 1, priceFormat: { type: 'price', precision: 2, minMove: 0.25 } });
+  P.prim = new PanePrim(P); P.series.attachPrimitive(P.prim);
+  /* the chart library swallows a second click that comes within its double-click window, so while
+     a tool is in use the page detects clicks itself and ignores the library's copy of the same click */
+  const ownRecent = () => performance.now() - (P.ownClickAt || 0) < 400;
+  ch.subscribeClick(p => { if (!ownRecent()) onChartClick(P, p); });
+  if (ch.subscribeDblClick) ch.subscribeDblClick(p => { if (!ownRecent() && meas && !meas.done && meas.pane === P.i) onChartClick(P, p); });
+  P.el.addEventListener('mousedown', e => {
+    if (drag) { P.downAt = null; return; }   /* a drawing was grabbed: not a click */
+    const busy = tool !== 'none' || !!pickField || !!drawStart || !!(meas && !meas.done) || e.shiftKey;
+    P.downAt = e.button === 0 && busy ? { x: e.clientX, y: e.clientY } : null;
+  }, true);
+  P.el.addEventListener('mouseup', e => {
+    const d0 = P.downAt; P.downAt = null;
+    if (!d0 || e.button !== 0 || Math.abs(e.clientX - d0.x) + Math.abs(e.clientY - d0.y) > 5) return;
+    if (e.target.closest && e.target.closest('button,.selbar,.pempty,.legend')) return;
+    const q = localXY(P, e); if (!q.inside) return;
+    P.ownClickAt = performance.now();
+    onChartClick(P, { point: { x: q.x, y: q.y }, logical: P.chart.timeScale().coordinateToLogical(q.x), sourceEvent: e });
+  }, true);
+  ch.subscribeCrosshairMove(p => onCross(P, p));
+  ch.timeScale().subscribeVisibleLogicalRangeChange(lr => onRange(P, lr));
+  P.el.addEventListener('pointerdown', () => setActive(P.i));
+  P.el.addEventListener('mousedown', e => onDrawDown(P, e), true);
+  P.el.addEventListener('mousemove', e => {
+    if (shiftDown !== e.shiftKey) { shiftDown = e.shiftKey; if (drawStart) P.prim.req(); }
+    if (drag || !S || !P.D || P.disp.last < 0) return;
+    if (!drawIdle() || (e.target.closest && e.target.closest('button,.selbar'))) { setHover(P, null); return; }
+    const q = localXY(P, e); setHover(P, q.inside ? hitTest(P, q.x, q.y) : null);
+  });
+  P.el.addEventListener('mouseleave', () => { if (!drag) setHover(P, null); });
+  P.el.addEventListener('contextmenu', e => {
+    if (!S || (e.target.closest && e.target.closest('.selbar,.pbtn,.pempty'))) return;
+    e.preventDefault();
+    if (!drawIdle()) { cancelTools(); return; }
+    const q = localXY(P, e), h = q.inside && P.D && P.disp.last >= 0 ? hitTest(P, q.x, q.y) : null;
+    if (h) { selAt = { x: q.x, y: q.y }; select(P.i, h.idx, true); } else cancelTools();
+  });
+}
+const idxX = (P, i) => P.chart.timeScale().logicalToCoordinate(i - P.disp.start);
+function tToIdx(A, t) { const n = A.m - 1, lt = A.T[n]; if (t >= lt + A.tf) return n + Math.floor((t - lt) / A.tf); if (t < A.T[0]) return -Math.ceil((A.T[0] - t) / A.tf); return bucketAt(A, t); }
+function idxToT(A, k) { k = Math.round(k); const n = A.m - 1; return k < 0 ? A.T[0] + k * A.tf : k <= n ? A.T[k] : A.T[n] + (k - n) * A.tf; }
+function geo(P, ms) {
+  const A = agg(P, curTF(P)), x0 = idxX(P, P.disp.start), x1 = idxX(P, P.disp.start + 1), sz = ms || P.chart.paneSize();
+  return { A, W: sz.width, H: sz.height, half: Math.max(1, ((x1 ?? 0) - (x0 ?? 0)) / 2), xt: t => idxX(P, tToIdx(A, t)), y: p => P.series.priceToCoordinate(p) };
+}
+const okN = v => v != null && isFinite(v);
+const fibPx = (d, l) => d.p2 + (d.p1 - d.p2) * l;
+function drawPane(P, target) {
+  if (!S || !P.D || P.disp.last < 0) return;
+  const list = S.draw[P.i] || [];
+  const prev = drawStart && drawStart.pane === P.i && drawHover ? buildTwo(P, drawStart, drawHover, true) : null;
+  const m = meas && meas.pane === P.i ? meas : null;
+  if (!list.length && !prev && !m) return;
+  target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+    const G = geo(P, mediaSize);
+    list.forEach(d => { if (d.type !== 'h') renderDrawing(P, ctx, G, d, false); });
+    if (prev) renderDrawing(P, ctx, G, prev, true);
+    const show = new Set();
+    if (sel && sel.pane === P.i) show.add(sel.idx);
+    if (P.hvd) show.add(P.hvd.idx);
+    if (drag && drag.P === P) show.add(drag.idx);
+    for (const k of show) if (list[k]) drawHandles(ctx, handlesOf(G, list[k]), sel && sel.pane === P.i && sel.idx === k);
+    if (m) drawMeasure(P, ctx, G.A, m, G.y);
+  });
+}
+function txt(ctx, s, x, y, col, align = 'left', base = 'middle') { ctx.font = '600 11px ' + FONT; ctx.textAlign = align; ctx.textBaseline = base; ctx.fillStyle = col; ctx.fillText(s, x, y); }
+function pill(ctx, G, lines, cx, y, bg, where, fg = '#FFFFFF') {
+  ctx.font = '600 11.5px ' + FONT;
+  const lh = 15, w = Math.max(...lines.map(s => ctx.measureText(s).width)) + 14, h = lines.length * lh + 5;
+  const bx = Math.max(2, Math.min(cx - w / 2, G.W - w - 2)), by = where === 'above' ? y - h - 3 : where === 'below' ? y + 3 : y - h / 2;
+  ctx.fillStyle = bg; ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(bx, by, w, h, 4); else ctx.rect(bx, by, w, h); ctx.fill();
+  ctx.fillStyle = fg; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  lines.forEach((s, k) => ctx.fillText(s, bx + 7, by + 3 + k * lh));
+}
+function renderDrawing(P, ctx, G, d, preview) {
+  const { xt, y, W, H, half } = G, col = dcol(d);
+  ctx.save();
+  ctx.lineWidth = 1.5; ctx.setLineDash([]); ctx.strokeStyle = col; ctx.fillStyle = col;
+  try {
+    if (d.type === 'r') {
+      const a = xt(Math.min(d.t1, d.t2)), b = xt(Math.max(d.t1, d.t2)), y1 = y(d.p1), y2 = y(d.p2); if (![a, b, y1, y2].every(okN)) return;
+      ctx.fillStyle = alpha(col, 0.16); ctx.fillRect(a - half, Math.min(y1, y2), b - a + 2 * half, Math.abs(y2 - y1));
+      ctx.strokeRect(Math.round(a - half) + .5, Math.round(Math.min(y1, y2)) + .5, Math.round(b - a + 2 * half), Math.round(Math.abs(y2 - y1)));
+    } else if (d.type === 'l' || d.type === 'ray') {
+      const xa = xt(d.t1), xb = xt(d.t2), y1 = y(d.p1), y2 = y(d.p2); if (![xa, xb, y1, y2].every(okN)) return;
+      let ex = xb, ey = y2;
+      if (d.type === 'ray') { const dx = xb - xa, dy = y2 - y1, L = Math.hypot(dx, dy); if (L > 0.5) { const k = (W + H) * 4 / L; ex = xa + dx * k; ey = y1 + dy * k; } }
+      ctx.beginPath(); ctx.moveTo(xa, y1); ctx.lineTo(ex, ey); ctx.stroke();
+    } else if (d.type === 'hray') {
+      const x = xt(d.t1), yy = y(d.p1); if (!okN(x) || !okN(yy)) return;
+      ctx.beginPath(); ctx.moveTo(x, Math.round(yy) + .5); ctx.lineTo(W, Math.round(yy) + .5); ctx.stroke();
+      txt(ctx, fmtP(d.p1), W - 6, yy - 3, col, 'right', 'bottom');
+    } else if (d.type === 'v') {
+      const x = xt(d.t1); if (!okN(x)) return;
+      ctx.beginPath(); ctx.moveTo(Math.round(x) + .5, 0); ctx.lineTo(Math.round(x) + .5, H); ctx.stroke();
+      pill(ctx, G, [fmtDT(S.tz, d.t1, false)], x, H - 4, col, 'above', ink(col));
+    } else if (d.type === 'fib') drawFib(ctx, G, d, preview);
+    else if (d.type === 'pos') drawPos(P, ctx, G, d, preview);
+  } finally { ctx.restore(); }
+}
+function drawFib(ctx, G, d, preview) {
+  const { xt, y, W } = G, xa = xt(d.t1), xb = xt(d.t2), ya = y(d.p1), yb = y(d.p2); if (![xa, xb, ya, yb].every(okN)) return;
+  const F = S.fib || FIB_DEF, L = Math.min(xa, xb), R = F.ext ? W : Math.max(xa, xb, L + 40);
+  const lv = [...new Set(F.levels)].sort((p, q) => p - q), ys = lv.map(l => y(fibPx(d, l))), multi = d.c === 'multi', mono = dcol(d);
+  if (F.fill && multi) for (let k = 0; k + 1 < lv.length; k++) { const y1 = ys[k], y2 = ys[k + 1]; if (!okN(y1) || !okN(y2)) continue; ctx.fillStyle = alpha(fibCol(lv[k + 1], k + 1), 0.13); ctx.fillRect(L, Math.min(y1, y2), R - L, Math.abs(y2 - y1)); }
+  if (F.fill && !multi) { const ote = lv.filter(l => l >= 0.6 && l <= 0.8).map(l => y(fibPx(d, l))).filter(okN); if (ote.length > 1) { ctx.fillStyle = alpha(mono, 0.14); ctx.fillRect(L, Math.min(...ote), R - L, Math.max(...ote) - Math.min(...ote)); } }
+  ctx.setLineDash([4, 4]); ctx.strokeStyle = alpha(mono, 0.6); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(xb, yb); ctx.stroke();
+  ctx.setLineDash([]);
+  lv.forEach((l, k) => {
+    const yy = ys[k]; if (!okN(yy)) return; const col = multi ? fibCol(l, k) : mono;
+    ctx.strokeStyle = col; ctx.lineWidth = 1.25; ctx.beginPath(); ctx.moveTo(L, Math.round(yy) + .5); ctx.lineTo(R, Math.round(yy) + .5); ctx.stroke();
+    const s = String(+l.toFixed(3)) + (F.px ? ` (${fmtP(fibPx(d, l))})` : '');
+    if (L > 96) txt(ctx, s, L - 5, yy, col, 'right'); else txt(ctx, s, L + 4, yy - 2, col, 'left', 'bottom');
+  });
+}
+function posStats(P, d) {
+  const c = cfg(P), pv = c.pv || 0, tick = c.tick || .25, dist = Math.abs(d.e - d.sl), rew = Math.abs(d.tp - d.e);
+  let qty = dist > 0 && pv > 0 ? Math.floor(((S.risk || 0) + 1e-9) / (dist * pv)) : 0; if (c.max && qty > c.max) qty = c.max;
+  return { pv, tick, dist, rew, qty, rr: dist > 0 ? rew / dist : 0 };
+}
+const posCache = new WeakMap();
+function posOutcome(P, A, d) {
+  const D = P.D, key = `${D.id}|${P.cur}|${A.tf}|${d.t1}|${d.t2}|${d.e}|${d.sl}|${d.tp}|${d.side}|${d.c0 || 0}`, c = posCache.get(d);
+  if (c && c.key === key) return c.r;
+  const iEnd = Math.min(P.cur, lowerBound(D.t, Math.max(d.t1, d.t2) + A.tf) - 1);
+  let i = lowerBound(D.t, d.t1), fill = -1, exit = -1, why = '';
+  if (d.c0 && d.c0 > d.t1) i = Math.max(i, upperBound(D.e, d.c0));
+  for (; i <= iEnd; i++) {
+    if (fill < 0) { if (D.l[i] <= d.e && D.h[i] >= d.e) fill = i; continue; }
+    const hs = d.side === 1 ? D.l[i] <= d.sl : D.h[i] >= d.sl, ht = d.side === 1 ? D.h[i] >= d.tp : D.l[i] <= d.tp;
+    if (hs || ht) { exit = i; why = hs ? 'sl' : 'tp'; break; }
+  }
+  const r = { fill, exit, why, last: Math.max(iEnd, fill), ended: iEnd < P.cur };
+  posCache.set(d, { key, r }); return r;
+}
+function drawPos(P, ctx, G, d, preview) {
+  const { xt, y } = G; let x1 = xt(d.t1), x2 = xt(d.t2); const ye = y(d.e), yt = y(d.tp), ys = y(d.sl);
+  if (![x1, x2, ye, yt, ys].every(okN)) return;
+  if (x2 < x1 + 8) x2 = x1 + 8;
+  const st = posStats(P, d), w = x2 - x1, up = d.side === 1;
+  ctx.setLineDash([]);
+  const cT = d.ct || POS_UP, cS = d.cs || POS_DN;
+  ctx.fillStyle = alpha(cT, 0.26); ctx.fillRect(x1, Math.min(ye, yt), w, Math.abs(yt - ye));
+  ctx.fillStyle = alpha(cS, 0.26); ctx.fillRect(x1, Math.min(ye, ys), w, Math.abs(ys - ye));
+  const o = preview ? null : posOutcome(P, G.A, d);
+  if (o && o.fill >= 0) {
+    const D = P.D, j = o.exit >= 0 ? o.exit : o.last, xf = xt(D.t[o.fill]), xe = xt(D.t[j]), endPx = o.exit >= 0 ? (o.why === 'tp' ? d.tp : d.sl) : D.c[j], yEnd = y(endPx);
+    if ([xf, xe, yEnd].every(okN)) {
+      ctx.fillStyle = 'rgba(20,20,20,.2)'; ctx.fillRect(Math.min(xf, xe), Math.min(ye, yEnd), Math.max(2, Math.abs(xe - xf)), Math.abs(yEnd - ye));
+      ctx.strokeStyle = 'rgba(20,20,20,.8)'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(xf, ye); ctx.lineTo(xe, yEnd); ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+  const hl = yy => { ctx.beginPath(); ctx.moveTo(x1, Math.round(yy) + .5); ctx.lineTo(x2, Math.round(yy) + .5); ctx.stroke(); };
+  ctx.lineWidth = 1; ctx.strokeStyle = cT; hl(yt); ctx.strokeStyle = cS; hl(ys); ctx.strokeStyle = '#1A1A1A'; ctx.lineWidth = 1.25; hl(ye);
+  /* only the risk/reward is written on the box; the outcome shows as the pill colour */
+  let bg = 'rgba(28,28,28,.9)';
+  if (o && o.exit >= 0) bg = o.why === 'tp' ? cT : cS;
+  pill(ctx, G, [`R:R ${st.rr.toFixed(2)}`], (x1 + x2) / 2, ye, bg, 'mid', ink(bg.startsWith('#') ? bg : '#000000'));
+}
+function handlesOf(G, d) {
+  const X = G.xt, Y = G.y;
+  if (d.type === 'l' || d.type === 'ray' || d.type === 'fib') return [{ k: '1', x: X(d.t1), y: Y(d.p1) }, { k: '2', x: X(d.t2), y: Y(d.p2) }];
+  if (d.type === 'r') { const lo = Math.min(d.t1, d.t2), sx = t => X(t) + (t === lo ? -G.half : G.half); return [['1', d.t1, d.p1], ['2', d.t2, d.p2], ['3', d.t1, d.p2], ['4', d.t2, d.p1]].map(([k, t, p]) => ({ k, x: sx(t), y: Y(p) })); }
+  if (d.type === 'hray') return [{ k: '1', x: X(d.t1), y: Y(d.p1) }];
+  if (d.type === 'v') return [{ k: 'body', x: X(d.t1), y: G.H / 2 }];
+  if (d.type === 'h') return [{ k: 'body', x: G.W / 2, y: Y(d.p) }];
+  if (d.type === 'pos') { const x1 = X(d.t1), x2 = Math.max(X(d.t2), x1 + 8); return [{ k: 'e', x: x1, y: Y(d.e) }, { k: 'tp', x: x1, y: Y(d.tp) }, { k: 'sl', x: x1, y: Y(d.sl) }, { k: 'w', x: x2, y: Y(d.e) }]; }
+  return [];
+}
+function drawHandles(ctx, hs, on) {
+  ctx.save(); ctx.setLineDash([]);
+  for (const h of hs) { if (!okN(h.x) || !okN(h.y)) continue; ctx.beginPath(); ctx.arc(h.x, h.y, on ? 5 : 4.5, 0, Math.PI * 2); ctx.fillStyle = '#FFFFFF'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = CH.draw; ctx.stroke(); }
+  ctx.restore();
+}
+const segDist = (ax, ay, bx, by, x, y, ray) => { const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1; let u = ((x - ax) * dx + (y - ay) * dy) / L2; u = ray ? Math.max(0, u) : clamp(u, 0, 1); return Math.hypot(ax + u * dx - x, ay + u * dy - y); };
+function bodyHit(G, d, x, yy) {
+  const X = G.xt, Y = G.y, T = 5;
+  if (d.type === 'h') { const y0 = Y(d.p); return okN(y0) && Math.abs(y0 - yy) <= T; }
+  if (d.type === 'v') { const x0 = X(d.t1); return okN(x0) && Math.abs(x0 - x) <= T; }
+  if (d.type === 'hray') { const x0 = X(d.t1), y0 = Y(d.p1); return okN(x0) && okN(y0) && Math.abs(y0 - yy) <= T && x >= x0 - T; }
+  if (d.type === 'l' || d.type === 'ray') { const a = X(d.t1), b = X(d.t2), y1 = Y(d.p1), y2 = Y(d.p2); return [a, b, y1, y2].every(okN) && segDist(a, y1, b, y2, x, yy, d.type === 'ray') <= T; }
+  if (d.type === 'r') { const a = X(Math.min(d.t1, d.t2)) - G.half, b = X(Math.max(d.t1, d.t2)) + G.half, y1 = Y(d.p1), y2 = Y(d.p2); return [a, b, y1, y2].every(okN) && x >= a - T && x <= b + T && yy >= Math.min(y1, y2) - T && yy <= Math.max(y1, y2) + T; }
+  if (d.type === 'fib') {
+    const xa = X(d.t1), xb = X(d.t2), F = S.fib || FIB_DEF; if (!okN(xa) || !okN(xb)) return false;
+    const L = Math.min(xa, xb), R = F.ext ? G.W : Math.max(xa, xb, L + 40); if (x < L - T || x > R + T) return false;
+    const ys = F.levels.map(l => Y(fibPx(d, l))).filter(okN); if (!ys.length) return false;
+    return yy >= Math.min(...ys) - T && yy <= Math.max(...ys) + T;
+  }
+  if (d.type === 'pos') { const x1 = X(d.t1), x2 = Math.max(X(d.t2), x1 + 8), a = Y(d.tp), b = Y(d.sl); return [x1, x2, a, b].every(okN) && x >= x1 && x <= x2 && yy >= Math.min(a, b) - 2 && yy <= Math.max(a, b) + 2; }
+  return false;
+}
+function hitTest(P, x, y) {
+  const list = (S && S.draw[P.i]) || []; if (!list.length || P.disp.last < 0) return null;
+  const G = geo(P), order = [...list.keys()].reverse();
+  if (sel && sel.pane === P.i && list[sel.idx]) order.unshift(sel.idx);
+  for (const k of order) for (const h of handlesOf(G, list[k])) if (okN(h.x) && okN(h.y) && Math.hypot(h.x - x, h.y - y) <= 7) return { idx: k, h: h.k };
+  for (const k of order) if (bodyHit(G, list[k], x, y)) return { idx: k, h: 'body' };
+  return null;
+}
+function buildTwo(P, a, b, preview) {
+  const A = agg(P, curTF(P));
+  /* Shift keeps a trend line or ray perfectly level, like TradingView */
+  if (a.tool === 'line') return { type: 'l', t1: a.t, p1: a.p, t2: b.t, p2: shiftDown ? a.p : b.p };
+  if (a.tool === 'ray') return { type: 'ray', t1: a.t, p1: a.p, t2: b.t, p2: shiftDown ? a.p : b.p };
+  if (a.tool === 'rect') return { type: 'r', t1: a.t, p1: a.p, t2: b.t, p2: b.p };
+  if (a.tool === 'fib') return { type: 'fib', t1: a.t, p1: a.p, t2: b.t, p2: b.p };
+  if (a.tool === 'long' || a.tool === 'short') {
+    const side = a.tool === 'long' ? 1 : -1, tick = cfg(P).tick || .25;
+    let dist = Math.abs(b.p - a.p); if (dist < tick) dist = Math.max(tick * 4, roundTick(P, a.p * 0.0008));
+    const i1 = tToIdx(A, a.t), i2 = tToIdx(A, b.t);
+    return { type: 'pos', side, t1: a.t, t2: i2 > i1 ? b.t : idxToT(A, i1 + 25), e: a.p, sl: roundTick(P, a.p - side * dist), tp: roundTick(P, a.p + side * (S.rr || 2) * dist) };
+  }
+  return null;
+}
+function applyDrag(P, A, d, dr, idxNow, pNow, shift) {
+  if (shift && (d.type === 'l' || d.type === 'ray')) { if (dr.h === '1') pNow = d.p2; else if (dr.h === '2') pNow = d.p1; }
+  const o = dr.orig, dI = idxNow - dr.i0, dP = pNow - dr.p0, h = dr.h, rt = v => roundTick(P, v), tick = cfg(P).tick || .25;
+  const sh = t => idxToT(A, tToIdx(A, t) + dI), tNow = idxToT(A, idxNow);
+  if (d.type === 'h') d.p = rt(o.p + dP);
+  else if (d.type === 'v') d.t1 = sh(o.t1);
+  else if (d.type === 'hray') { d.t1 = h === '1' ? tNow : sh(o.t1); d.p1 = h === '1' ? pNow : rt(o.p1 + dP); }
+  else if (d.type === 'pos') {
+    if (h === 'tp') d.tp = d.side === 1 ? Math.max(pNow, o.e + tick) : Math.min(pNow, o.e - tick);
+    else if (h === 'sl') d.sl = d.side === 1 ? Math.min(pNow, o.e - tick) : Math.max(pNow, o.e + tick);
+    else if (h === 'w') d.t2 = idxToT(A, Math.max(idxNow, tToIdx(A, o.t1) + 1));
+    else { d.t1 = sh(o.t1); d.t2 = sh(o.t2); d.e = rt(o.e + dP); d.sl = rt(o.sl + dP); d.tp = rt(o.tp + dP); delete d.c0; }
+  } else {
+    if (h === '1') { d.t1 = tNow; d.p1 = pNow; }
+    else if (h === '2') { d.t2 = tNow; d.p2 = pNow; }
+    else if (h === '3') { d.t1 = tNow; d.p2 = pNow; }
+    else if (h === '4') { d.t2 = tNow; d.p1 = pNow; }
+    else { d.t1 = sh(o.t1); d.t2 = sh(o.t2); d.p1 = rt(o.p1 + dP); d.p2 = rt(o.p2 + dP); }
+  }
+}
+function localXY(P, e) { const r = $('.cv', P.el).getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, sz = P.chart.paneSize(); return { x, y, inside: x >= 0 && y >= 0 && x < sz.width && y < sz.height }; }
+const drawIdle = () => tool === 'none' && !pickField && !drawStart && !(meas && !meas.done);
+function setHover(P, h) {
+  const key = h ? h.idx + ':' + h.h : ''; if (key === P.hvdKey) return;
+  P.hvdKey = key; P.hvd = h; P.el.classList.toggle('hovdraw', !!h && h.h === 'body'); P.el.classList.toggle('hovhandle', !!h && h.h !== 'body'); P.prim.req();
+}
+function onDrawDown(P, e) {
+  if (e.button !== 0 || !S || !P.D || P.disp.last < 0 || !drawIdle()) return;
+  if (e.target.closest && e.target.closest('button,.selbar,.pempty')) return;
+  const q = localXY(P, e); if (!q.inside) return;
+  const h = hitTest(P, q.x, q.y); if (!h) return;
+  const lg = P.chart.timeScale().coordinateToLogical(q.x), raw = P.series.coordinateToPrice(q.y); if (lg == null || raw == null) return;
+  e.preventDefault(); e.stopPropagation();
+  select(P.i, h.idx);
+  drag = { P, idx: h.idx, h: h.h, i0: Math.max(0, P.disp.start + Math.round(lg)), p0: roundTick(P, raw), orig: JSON.parse(JSON.stringify(S.draw[P.i][h.idx])), moved: false };
+  P.el.classList.add('dragging');
+  const move = ev => {
+    if (!drag) return; const r = localXY(P, ev), hh = P.chart.paneSize().height;
+    const lg2 = P.chart.timeScale().coordinateToLogical(r.x), raw2 = P.series.coordinateToPrice(clamp(r.y, 0, hh - 1)); if (lg2 == null || raw2 == null) return;
+    const d = S.draw[P.i][drag.idx]; if (!d) return;
+    const A2 = agg(P, curTF(P)), i2 = Math.max(0, P.disp.start + Math.round(lg2));
+    applyDrag(P, A2, d, drag, i2, drag.h === 'body' ? roundTick(P, raw2) : snapP(P, A2, i2, raw2), ev.shiftKey);
+    drag.moved = true; if (d.type === 'h') syncHLines(P); P.prim.req();
+  };
+  const up = () => {
+    window.removeEventListener('mousemove', move, true); window.removeEventListener('mouseup', up, true);
+    P.el.classList.remove('dragging'); const mv = drag && drag.moved; drag = null; P.prim.req(); renderSelBar(); if (mv) queueSave();
+  };
+  window.addEventListener('mousemove', move, true); window.addEventListener('mouseup', up, true);
+}
+function cancelTools() { if (pickField) setPick(null); setTool('none'); deselect(); if (meas) { const q = meas.pane; meas = null; panes[q].prim.req(); } refreshBanner(); }
+let selAt = null;
+function select(i, k, keepAt) { if (!keepAt) selAt = null; sel = { pane: i, idx: k }; renderSelBar(); for (const P of panes) P.prim.req(); }
+function deselect() { if (!sel) return; sel = null; renderSelBar(); for (const P of panes) P.prim.req(); }
+function renderSelBar() {
+  for (const P of panes) {
+    const bar = $('.selbar', P.el), d = sel && S && sel.pane === P.i ? S.draw[P.i][sel.idx] : null;
+    if (!d) { bar.hidden = true; bar.innerHTML = ''; bar.style.cssText = ''; continue; }
+    let h = `<span class="lbl">${DNAME[d.type] || 'ציור'}${d.type === 'pos' ? (d.side === 1 ? ' לונג' : ' שורט') : ''}</span>`;
+    if (d.type === 'pos') h += `<button type="button" data-sa="ticket" title="ממלא את פאנל המסחר עם הכניסה, הסטופ והיעד">שלח לפקודה</button><button type="button" data-sa="flip">הפוך ל${d.side === 1 ? 'שורט' : 'לונג'}</button>`;
+    if (d.type === 'fib') h += `<button type="button" data-sa="fib">רמות…</button>`;
+    if (d.type === 'pos') h += `<label class="cp">יעד <input type="color" data-k="ct" value="${d.ct || POS_UP}" aria-label="צבע אזור היעד"></label><label class="cp">סטופ <input type="color" data-k="cs" value="${d.cs || POS_DN}" aria-label="צבע אזור הסטופ"></label>`;
+    else h += `<label class="cp" title="כל צבע"><input type="color" data-k="c" value="${dcol(d)}" aria-label="בחר כל צבע"></label>`;
+    if (d.type !== 'pos') h += `<span class="sw">${SWATCH.map(c => `<button type="button" class="swb${dcol(d) === c && d.c !== 'multi' ? ' on' : ''}" data-sa="color" data-c="${c}" style="background:${c}" aria-label="צבע ${c}"></button>`).join('')}${d.type === 'fib' ? `<button type="button" class="swb multi${d.c === 'multi' ? ' on' : ''}" data-sa="color" data-c="multi" title="צבעוני" aria-label="צבעוני"></button>` : ''}</span>`;
+    h += `<button type="button" class="del" data-sa="del" title="Delete">מחק</button>`;
+    bar.innerHTML = h; bar.hidden = false;
+    /* after a right-click the bar opens next to the cursor, like a context menu */
+    if (selAt) { const W = P.el.clientWidth, bw = bar.offsetWidth, bh = bar.offsetHeight; bar.style.cssText = `left:${clamp(selAt.x + 8, 4, W - bw - 4)}px;top:${clamp(selAt.y + 8, 4, P.el.clientHeight - bh - 4)}px;transform:none`; }
+    else bar.style.cssText = '';
+  }
+}
+/* the last colour picked for a tool becomes the default for new drawings of that tool */
+function rememberCol(d) {
+  if (!S) return; S.toolCol = S.toolCol || {};
+  S.toolCol[d.type] = d.type === 'pos' ? { ct: d.ct, cs: d.cs } : { c: d.c };
+}
+function syncMagnet() { const b = $('#bMagnet'), on = !S || S.magnet !== false; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }
+function addDrawing(P, d) {
+  if (d.type === 'pos') d.c0 = now;
+  const tc = S.toolCol && S.toolCol[d.type]; if (tc) for (const [k, v] of Object.entries(tc)) if (v) d[k] = v;
+  S.draw[P.i].push(d); if (d.type === 'h') syncHLines(P);
+  setTool('none'); select(P.i, S.draw[P.i].length - 1); queueSave();
+}
+function removeDrawing(P, k) {
+  const list = S.draw[P.i]; if (!list[k]) return;
+  const d = list.splice(k, 1)[0]; if (d.type === 'h') syncHLines(P);
+  sel = null; setHover(P, null); renderSelBar(); P.prim.req(); queueSave();
+}
+function posToTicket(P, d) {
+  if (S.pos || S.pend) { toast('כבר יש פוזיציה או פקודה פתוחה'); return; }
+  if (P.cur < 0) return;
+  if (S.active !== P.i) setActive(P.i);
+  const px = lastPx(P), tick = cfg(P).tick || .25;
+  const type = Math.abs(d.e - px) < tick / 2 ? 'mkt' : ((d.side === 1) === (d.e < px) ? 'lmt' : 'stp');
+  $(`#otype button[data-t="${type}"]`).click();
+  $('#fEntry').value = d.e.toFixed(2); $('#fSL').value = d.sl.toFixed(2); $('#fTP').value = d.tp.toFixed(2); TK.tpManual = true;
+  if ($('#app').classList.contains('big')) setBig(false);
+  $('#dock').classList.remove('collapsed'); $('#bDock').textContent = 'הסתר פאנל'; $('.tabs button[data-tab="trade"]').click();
+  renderTicket();
+  toast(`מוכן בפאנל: ${type === 'mkt' ? 'שוק' : type === 'lmt' ? 'לימיט' : 'סטופ'} ${d.side === 1 ? 'קנייה' : 'מכירה'} @ ${fmtP(type === 'mkt' ? px : d.e)}. לחץ ${d.side === 1 ? 'קנייה' : 'מכירה'} כדי לשלוח.`);
+}
+function spanText(sec) {
+  sec = Math.max(0, Math.round(sec)); const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), mi = Math.floor(sec % 3600 / 60), s = sec % 60;
+  if (d) return `${d}d ${h}h`; if (h) return mi ? `${h}h ${mi}m` : `${h}h`; if (mi) return s ? `${mi}m ${s}s` : `${mi}m`; return `${s}s`;
+}
+function drawMeasure(P, ctx, A, m, y) {
+  const xa = idxX(P, m.i1), xb = idxX(P, m.i2), ya = y(m.p1), yb = y(m.p2);
+  if ([xa, xb, ya, yb].some(v => v == null || isNaN(v))) return;
+  const up = m.p2 >= m.p1, col = up ? '#2B5CE6' : '#E5383B', c = cfg(P);
+  const L = Math.min(xa, xb), T = Math.min(ya, yb), W = Math.max(1, Math.abs(xb - xa)), H = Math.max(1, Math.abs(yb - ya)), mx = (xa + xb) / 2, my = (ya + yb) / 2;
+  ctx.fillStyle = alpha(col, 0.2); ctx.fillRect(L, T, W, H);
+  ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1.5; ctx.setLineDash([]);
+  const arrow = (x1, y1, x2, y2) => { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); if (Math.hypot(x2 - x1, y2 - y1) < 10) return; const a = Math.atan2(y2 - y1, x2 - x1), s = 7; ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - s * Math.cos(a - 0.45), y2 - s * Math.sin(a - 0.45)); ctx.lineTo(x2 - s * Math.cos(a + 0.45), y2 - s * Math.sin(a + 0.45)); ctx.closePath(); ctx.fill(); };
+  arrow(mx, ya, mx, yb); arrow(xa, my, xb, my);
+  const pts = m.p2 - m.p1, sg = pts > 0 ? '+' : pts < 0 ? '-' : '', pct = Math.abs(pts / m.p1 * 100), ticks = Math.round(Math.abs(pts) / (c.tick || .25));
+  const bars = m.i2 - m.i1, inA = Math.max(m.i1, m.i2) <= P.disp.last && Math.min(m.i1, m.i2) >= 0;
+  const sec = inA ? Math.abs(A.T[m.i2] - A.T[m.i1]) : Math.abs(bars) * A.tf, usd = Math.abs(pts) * (c.pv || 0);
+  const l1 = `${sg}${Math.abs(pts).toFixed(2)} pts (${sg}${pct.toFixed(2)}%) · ${ticks} ticks`;
+  const l2 = `${Math.abs(bars)} bars · ${spanText(sec)} · $${usd.toLocaleString('en-US', { maximumFractionDigits: 2 })} / ${c.sym || ''}`;
+  ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'; ctx.textBaseline = 'top';
+  const w = Math.max(ctx.measureText(l1).width, ctx.measureText(l2).width) + 16, h = 38, cw = ctx.canvas.clientWidth || 2000, chh = ctx.canvas.clientHeight || 2000;
+  let bx = mx - w / 2, by = up ? T - h - 6 : T + H + 6;
+  if (by < 2) by = T + H + 6; if (by + h > chh - 2) by = Math.max(2, T - h - 6);
+  bx = Math.max(2, Math.min(bx, cw - w - 2));
+  ctx.fillStyle = col; ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(bx, by, w, h, 5); else ctx.rect(bx, by, w, h); ctx.fill();
+  ctx.fillStyle = '#FFFFFF'; ctx.fillText(l1, bx + 8, by + 4); ctx.font = '500 11.5px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'; ctx.fillText(l2, bx + 8, by + 21);
+}
+/* ---------- indicators: sessions (killzones) + FVG/IFVG ---------- */
+const SESS_DEF = [
+  { id: 'as', name: 'Asia', short: 'AS', from: '20:00', to: '00:00', color: '#2B5CE6', on: true },
+  { id: 'lo', name: 'London', short: 'LO', from: '02:00', to: '05:00', color: '#E5383B', on: true },
+  { id: 'nyam', name: 'NY AM', short: 'NYAM', from: '09:30', to: '11:00', color: '#0B9F86', on: true },
+  { id: 'nyl', name: 'NY Lunch', short: 'NYL', from: '12:00', to: '13:00', color: '#F5B000', on: true },
+  { id: 'nypm', name: 'NY PM', short: 'NYPM', from: '13:30', to: '16:00', color: '#9B30B5', on: true },
+];
+const FVG_UP = '#0B9F86', FVG_DN = '#E5383B';
+function sessInstances(P) {
+  const defs = S.ind.sess.list, key = P.D.id + '|' + defs.map(d => d.from + d.to + (d.on ? 1 : 0)).join(',');
+  if (P.sessCache && P.sessCache.key === key) return P.sessCache.list;
+  const D = P.D, list = [], p0 = parts(NY, D.t[0]), lastT = D.t[D.n - 1], day0 = Date.UTC(p0.y, p0.mo, p0.d) / 86400000 - 1;
+  const hiAbove = segOf(P, D.id + '|H', D.h, 'max'), loBelow = segOf(P, D.id + '|L', D.l, 'min');
+  for (let k = 0; k < 4000; k++) {
+    const dt = new Date((day0 + k) * 86400000), y = dt.getUTCFullYear(), mo = dt.getUTCMonth(), d = dt.getUTCDate();
+    if (localToUTC(NY, y, mo, d, 0, 0) > lastT + 86400) break;
+    defs.forEach((df, di) => {
+      if (!df.on) return;
+      const [fh, fm] = df.from.split(':').map(Number), [th, tm] = df.to.split(':').map(Number);
+      const s = localToUTC(NY, y, mo, d, fh, fm), e = localToUTC(NY, y, mo, d + (th * 60 + tm <= fh * 60 + fm ? 1 : 0), th, tm);
+      const i0 = lowerBound(D.t, s), i1 = lowerBound(D.t, e) - 1; if (i0 >= D.n || i1 < i0) return;
+      let hi = -Infinity, lo = Infinity; for (let i = i0; i <= i1; i++) { if (D.h[i] > hi) hi = D.h[i]; if (D.l[i] < lo) lo = D.l[i]; }
+      const ha = hiAbove(i1 + 1, hi), lb = loBelow(i1 + 1, lo), hm = ha < D.n ? ha : -1, lm = lb < D.n ? lb : -1;
+      list.push({ di, i0, i1, hi, lo, hm, lm });
+    });
+  }
+  P.sessCache = { key, list }; return list;
+}
+/* first index >= s0 whose value is below / above thr, in O(log n) */
+function mkSeg(arr, kind) {
+  const n = arr.length; let sz = 1; while (sz < Math.max(1, n)) sz <<= 1;
+  const isMin = kind === 'min', tr = new Float32Array(2 * sz).fill(isMin ? Infinity : -Infinity); /* futures prices (0.25 ticks) are exact in float32 */
+  for (let j = 0; j < n; j++) tr[sz + j] = arr[j];
+  for (let j = sz - 1; j >= 1; j--) tr[j] = isMin ? Math.min(tr[2 * j], tr[2 * j + 1]) : Math.max(tr[2 * j], tr[2 * j + 1]);
+  const hit = isMin ? (v, thr) => v < thr : (v, thr) => v > thr;
+  return (s0, thr) => {
+    if (s0 >= n) return n; let j = s0 + sz;
+    for (;;) {
+      if (hit(tr[j], thr)) { while (j < sz) { j = 2 * j; if (!hit(tr[j], thr)) j++; } return j - sz; }
+      while (j & 1) j >>= 1; if (j === 0) return n; j++;
+    }
+  };
+}
+function segOf(P, key, arr, kind) { if (!P.segs) P.segs = new Map(); let f = P.segs.get(key); if (!f) { f = mkSeg(arr, kind); P.segs.set(key, f); } return f; }
+function fvgAll(P, src) {
+  if (!P.fvgAll) P.fvgAll = new Map();
+  const key = `${P.D.id}|${src}|${S.ind.fvg.min}`; let r = P.fvgAll.get(key); if (r) return r;
+  const A = agg(P, src), n = A.m;
+  const firstBelow = segOf(P, `${P.D.id}|C${src}|min`, A.C, 'min'), firstAbove = segOf(P, `${P.D.id}|C${src}|max`, A.C, 'max');
+  const min = S.ind.fvg.min, list = [];
+  for (let i = 2; i < n; i++) {
+    let f = null;
+    if (A.L[i] > A.H[i - 2] && A.L[i] - A.H[i - 2] >= min) f = { k: 1, bot: A.H[i - 2], top: A.L[i] };
+    else if (A.H[i] < A.L[i - 2] && A.L[i - 2] - A.H[i] >= min) f = { k: -1, bot: A.H[i], top: A.L[i - 2] };
+    if (!f) continue;
+    const inv = f.k === 1 ? firstBelow(i + 1, f.bot) : firstAbove(i + 1, f.top);
+    const end = inv >= n ? n : (f.k === 1 ? firstAbove(inv + 1, f.top) : firstBelow(inv + 1, f.bot));
+    list.push({ i, k: f.k, top: f.top, bot: f.bot, inv, end });
+  }
+  r = { A, list }; P.fvgAll.set(key, r); return r;
+}
+function getFVG(P) {
+  const o = S.ind.fvg, want = +o.src || 0, src = (want && want >= P.D.base && want % P.D.base === 0) ? want : curTF(P);
+  const { A, list } = fvgAll(P, src), b = A.b2[P.cur], M = P.cur === A.E[b] ? b + 1 : b;
+  const key = `${P.D.id}|${src}|${M}|${o.ifvg}|${o.max}|${o.min}`;
+  if (P.fvgCache && P.fvgCache.key === key) return P.fvgCache.list;
+  const act = [], inv = [];
+  for (const f of list) {
+    if (f.i >= M) break;
+    if (f.inv >= M) act.push({ k: f.k, top: f.top, bot: f.bot, t0: A.T[f.i - 1], src });
+    else if (o.ifvg && f.end >= M) inv.push({ k: -f.k, top: f.top, bot: f.bot, t0: A.T[f.inv], src, ifvg: true });
+  }
+  inv.sort((a, b) => a.t0 - b.t0);
+  const pick = arr => arr.filter(x => x.k === 1).slice(-o.max).concat(arr.filter(x => x.k === -1).slice(-o.max));
+  const res = pick(act).concat(o.ifvg ? pick(inv) : []);
+  P.fvgCache = { key, list: res }; return res;
+}
+function drawInd(P, target) {
+  if (!S || !S.ind || !P.D || P.disp.last < 0 || P.cur < 0) return;
+  const tf = curTF(P), showSess = S.ind.sess.on && tf <= 3600, showFvg = S.ind.fvg.on;
+  if (!showSess && !showFvg) return;
+  target.useMediaCoordinateSpace(({ context: ctx, mediaSize: ms }) => {
+    const A = agg(P, tf), D = P.D, lr = P.chart.timeScale().getVisibleLogicalRange(); if (!lr) return;
+    const x0 = idxX(P, P.disp.start), x1 = idxX(P, P.disp.start + 1), half = Math.max(1, ((x1 ?? 0) - (x0 ?? 0)) / 2);
+    const xt = t => idxX(P, bucketAt(A, t)), y = p => P.series.priceToCoordinate(p), bad = v => v == null || isNaN(v);
+    const tFrom = A.T[clamp(P.disp.start + Math.floor(lr.from) - 2, 0, P.disp.last)];
+    ctx.font = '600 10px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif'; ctx.textBaseline = 'top'; ctx.lineWidth = 1;
+    const usedY = [];
+    const freeY = yl => { if (usedY.some(u => Math.abs(u - yl) < 11)) return false; usedY.push(yl); return true; };
+    if (showFvg) {
+      for (const f of getFVG(P)) {
+        const yt = y(f.top), yb = y(f.bot); if (bad(yt) || bad(yb)) continue;
+        const xa = f.ifvg ? xt(f.t0) + half : xt(f.t0) - half; if (bad(xa) || xa > ms.width) continue;
+        const col = f.k === 1 ? FVG_UP : FVG_DN, top = Math.min(yt, yb), hgt = Math.max(1, Math.abs(yb - yt));
+        ctx.fillStyle = alpha(col, f.ifvg ? 0.2 : 0.3); ctx.fillRect(xa, top, ms.width - xa, hgt);
+        if (f.ifvg) { ctx.strokeStyle = alpha(col, 0.95); ctx.setLineDash([4, 3]); ctx.strokeRect(Math.round(xa) + .5, Math.round(top) + .5, Math.round(ms.width - xa), Math.round(hgt)); ctx.setLineDash([]); }
+        const ly = top + Math.max(0, (hgt - 11) / 2); if (hgt >= 9 && freeY(ly)) { const lbl = (f.ifvg ? 'IFVG' : 'FVG') + (f.src !== tf ? ' ' + tfLabel(f.src) : ''), w = ctx.measureText(lbl).width; ctx.fillStyle = '#111111'; ctx.fillText(lbl, ms.width - w - 4, ly); }
+      }
+    }
+    if (showSess) {
+      const defs = S.ind.sess.list;
+      for (const it of sessInstances(P)) {
+        if (it.i0 > P.cur) continue;
+        const df = defs[it.di], done = it.i1 <= P.cur; let hi = it.hi, lo = it.lo, iEnd = it.i1;
+        if (!done) { hi = -Infinity; lo = Infinity; for (let i = it.i0; i <= P.cur; i++) { if (D.h[i] > hi) hi = D.h[i]; if (D.l[i] < lo) lo = D.l[i]; } iEnd = P.cur; }
+        const lineLive = S.ind.sess.lines && done && ((it.hm < 0 || it.hm > P.cur) || (it.lm < 0 || it.lm > P.cur) || D.t[Math.max(it.hm, it.lm)] >= tFrom);
+        if (D.t[iEnd] < tFrom && !lineLive) continue;
+        const xa = xt(D.t[it.i0]) - half, xb = xt(D.t[iEnd]) + half, ya = y(hi), yb = y(lo); if ([xa, xb, ya, yb].some(bad)) continue;
+        ctx.fillStyle = alpha(df.color, 0.17); ctx.fillRect(xa, ya, xb - xa, yb - ya);
+        ctx.strokeStyle = alpha(df.color, 0.55); ctx.strokeRect(Math.round(xa) + .5, Math.round(ya) + .5, Math.round(xb - xa), Math.round(yb - ya));
+        if (xb - xa > 26) { ctx.fillStyle = df.color; ctx.fillText(df.name, xa + 3, ya - 12 > 0 ? ya - 12 : ya + 2); }
+        if (S.ind.sess.lines && done) {
+          for (const [lv, mit, tag] of [[hi, it.hm, 'H'], [lo, it.lm, 'L']]) {
+            const yy = y(lv); if (bad(yy)) continue;
+            const open = mit < 0 || mit > P.cur, xe = open ? ms.width : xt(D.t[mit]); if (bad(xe) || xe <= xb) continue;
+            ctx.strokeStyle = alpha(df.color, 0.95); ctx.setLineDash([5, 3]); ctx.beginPath(); ctx.moveTo(xb, Math.round(yy) + .5); ctx.lineTo(xe, Math.round(yy) + .5); ctx.stroke(); ctx.setLineDash([]);
+            const ly = tag === 'H' ? yy - 12 : yy + 2; if (open && freeY(ly)) { const lbl = df.short + '.' + tag, w = ctx.measureText(lbl).width; ctx.fillStyle = df.color; ctx.fillText(lbl, ms.width - w - 4, ly); }
+          }
+        }
+      }
+    }
+  });
+}
+function paneEmpty(P, html) { const e = $('.pempty', P.el); e.hidden = !html; e.innerHTML = html ? `<div>${html}</div>` : ''; }
+function fullRender(P, keep) {
+  if (!S || !P.D) { P.series.setData([]); P.disp = { tf: 0, ds: '', start: 0, last: -1 }; P.dispCT = []; P.series.setMarkers([]); setLegend(P); return; }
+  if (P.cur < 0) {
+    P.series.setData([]); P.disp = { tf: 0, ds: '', start: 0, last: -1 }; P.dispCT = []; P.series.setMarkers([]);
+    paneEmpty(P, `הנתונים של ${esc(cfg(P).sym)} מתחילים ב-<span class="num">${fmtDT(S.tz, P.D.t[0])}</span>`);
+    setLegend(P); return;
+  }
+  paneEmpty(P, '');
+  const tf = curTF(P), A = agg(P, tf), b = A.b2[P.cur], start = Math.max(0, b - WIN + 1), ts = P.chart.timeScale();
+  const vr = keep && P.disp.tf === tf && P.disp.ds === P.D.id ? ts.getVisibleLogicalRange() : null, oldStart = P.disp.start;
+  const data = []; P.dispCT = []; let prev = -Infinity;
+  for (let k = start; k <= b; k++) {
+    let tt = ct(A.T[k]); if (tt <= prev) tt = prev + 1; prev = tt; P.dispCT.push(tt);
+    const kk = k < b ? { o: A.O[k], h: A.H[k], l: A.L[k], c: A.C[k] } : candleAt(P, A, b, P.cur);
+    data.push({ time: tt, open: kk.o, high: kk.h, low: kk.l, close: kk.c });
+  }
+  P.ignoreUntil = performance.now() + 150;
+  P.series.setData(data); P.disp = { tf, ds: P.D.id, start, last: b };
+  if (vr) { const sh = oldStart - start; ts.setVisibleLogicalRange({ from: vr.from + sh, to: vr.to + sh }); }
+  else { const n = data.length - 1; ts.setVisibleLogicalRange({ from: n - 120, to: n + 12 }); }
+  syncMarkers(P); setLegend(P); P.prim.req();
+}
+function incRender(P) {
+  if (!P.D) return;
+  if (P.cur < 0) { if (P.disp.last >= 0) fullRender(P, false); return; }
+  const tf = curTF(P), A = agg(P, tf), b = A.b2[P.cur];
+  if (P.disp.tf !== tf || P.disp.ds !== P.D.id || P.disp.last < 0 || b < P.disp.last || b > P.disp.last + 1) return fullRender(P, true);
+  if (b === P.disp.last + 1) {
+    const pv = P.disp.last, kk = candleAt(P, A, pv, A.E[pv]);
+    P.series.update({ time: P.dispCT[pv - P.disp.start], open: kk.o, high: kk.h, low: kk.l, close: kk.c });
+    P.dispCT.push(Math.max(ct(A.T[b]), P.dispCT[P.dispCT.length - 1] + 1)); P.disp.last = b;
+  }
+  const k = candleAt(P, A, b, P.cur);
+  P.series.update({ time: P.dispCT[b - P.disp.start], open: k.o, high: k.h, low: k.l, close: k.c });
+  if (!P.hovering) setLegend(P);
+}
+function setLegend(P, cd) {
+  const el = $('.legend', P.el);
+  if (!S || !P.D) { el.innerHTML = ''; return; }
+  const c = cfg(P), sym = c.sym || P.D.meta.symbol || '', desc = (INSTR[sym] && INSTR[sym].desc) || sym;
+  const rr = P.cur >= 0 ? P.D.r[P.cur] : 0, coarse = rr > curTF(P) ? `<span class="coarse" title="בתקופה הזו יש רק נרות של ${tfLabel(rr)}, אז הגרף מציג אותם גם בטיים פריים קטן יותר">נתוני ${tfLabel(rr)} בתקופה הזו</span>` : '';
+  const head = `<span class="t">${esc(desc)} · ${tfLabel(curTF(P))} · CME</span>${coarse}`;
+  if (P.cur < 0) { el.innerHTML = head; return; }
+  const A = agg(P, curTF(P)); let k, prevC;
+  if (cd) { k = cd; const i = upperBound(P.dispCT, cd.time) - 1, bi = P.disp.start + i; prevC = bi > 0 ? A.C[bi - 1] : NaN; }
+  else { const b = A.b2[P.cur], q = candleAt(P, A, b, P.cur); k = { open: q.o, high: q.h, low: q.l, close: q.c }; prevC = b > 0 ? A.C[b - 1] : NaN; }
+  const cls = k.close >= k.open ? 'vu' : 'vd', chg = k.close - prevC, pct = chg / prevC * 100;
+  el.innerHTML = head + `<span><i>O</i><span class="${cls}">${fmtP(k.open)}</span></span><span><i>H</i><span class="${cls}">${fmtP(k.high)}</span></span><span><i>L</i><span class="${cls}">${fmtP(k.low)}</span></span><span><i>C</i><span class="${cls}">${fmtP(k.close)}</span></span>` + (isFinite(chg) ? `<span class="${cls}">${chg >= 0 ? '+' : ''}${fmtP(chg)} (${chg >= 0 ? '+' : ''}${pct.toFixed(2)}%)</span>` : '');
+}
+function syncMarkers(P) {
+  if (!S || !P.D || P.disp.last < 0) { P.series.setMarkers([]); return; }
+  const A = agg(P, curTF(P)), ms = [], D = P.D;
+  const inR = bi => bi >= P.disp.start && bi <= P.disp.last;
+  const at = t => { const i = lowerBound(D.t, t); return i < D.n && D.t[i] === t && i <= P.cur ? A.b2[i] : -1; };
+  const list = [...trades.values()].filter(tr => tr.pane === P.i);
+  if (S.pos && S.pos.pane === P.i) list.push({ ...S.pos, open: true });
+  for (const tr of list) {
+    const bi = at(tr.tIn);
+    if (bi >= 0 && inR(bi)) ms.push({ time: P.dispCT[bi - P.disp.start], position: tr.side === 1 ? 'belowBar' : 'aboveBar', color: tr.side === 1 ? CH.long : CH.short, shape: tr.side === 1 ? 'arrowUp' : 'arrowDown', text: '' });
+    if (!tr.open) { const bo = at(tr.tOut); if (bo >= 0 && inR(bo)) ms.push({ time: P.dispCT[bo - P.disp.start], position: tr.side === 1 ? 'aboveBar' : 'belowBar', color: tr.pnl >= 0 ? CH.win : CH.loss, shape: 'circle', text: fmtUsd(tr.pnl) }); }
+  }
+  ms.sort((a, b) => a.time - b.time); P.series.setMarkers(ms);
+}
+function syncHLines(P) {
+  for (const l of P.hLines) P.series.removePriceLine(l); P.hLines = [];
+  if (!S) return;
+  for (const d of (S.draw[P.i] || [])) if (d.type === 'h') P.hLines.push(P.series.createPriceLine({ price: d.p, color: dcol(d), lineWidth: 1, lineStyle: LW.LineStyle.Solid, axisLabelVisible: true, title: '' }));
+}
+function syncPosLines(P, tk) {
+  if (!S) return;
+  const mine = x => x && x.pane === P.i;
+  const key = JSON.stringify([mine(S.pos) && [S.pos.entry, S.pos.sl, S.pos.tp], mine(S.pend) && [S.pend.price, S.pend.sl, S.pend.tp], tk && tk.ok && !S.pos && !S.pend && S.active === P.i ? [tk.entry, tk.sl, tk.tp, tk.type] : null]);
+  if (key === P.posKey) return; P.posKey = key;
+  for (const l of P.posLines) P.series.removePriceLine(l); P.posLines = [];
+  const add = (price, color, title, style = LW.LineStyle.Solid, w = 1) => { if (price != null && isFinite(price)) P.posLines.push(P.series.createPriceLine({ price, color, lineWidth: w, lineStyle: style, axisLabelVisible: true, title })); };
+  if (mine(S.pos)) { add(S.pos.entry, CH.entry, 'כניסה', LW.LineStyle.Dotted); add(S.pos.sl, CH.loss, 'סטופ', LW.LineStyle.Solid, 2); add(S.pos.tp, CH.win, 'יעד', LW.LineStyle.Solid, 2); }
+  else if (mine(S.pend)) { add(S.pend.price, CH.pend, S.pend.type === 'lmt' ? 'לימיט' : 'סטופ כניסה', LW.LineStyle.Dashed, 2); add(S.pend.sl, CH.loss, 'סטופ', LW.LineStyle.Dashed); add(S.pend.tp, CH.win, 'יעד', LW.LineStyle.Dashed); }
+  else if (tk && tk.ok && !S.pos && !S.pend && S.active === P.i) { if (tk.type !== 'mkt') add(tk.entry, CH.pend, 'כניסה', LW.LineStyle.Dashed); add(tk.sl, CH.loss, 'סטופ', LW.LineStyle.Dashed); if (tk.tp != null) add(tk.tp, CH.win, 'יעד', LW.LineStyle.Dashed); }
+}
+function renderAllPanes(keep) { for (const P of panes) fullRender(P, keep); }
+function setBig(on) {
+  const app = $('#app'); on = on ?? !app.classList.contains('big');
+  app.classList.toggle('big', on); $('#bBig').classList.toggle('on', on);
+  $('#bBig').lastChild.textContent = on ? 'צא ממסך גדול' : 'מסך גדול';
+  try {
+    if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+    if (!on && document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+  } catch (e) {}
+  renderPos();
+}
+function applyLayout() {
+  const ch = $('#charts'), ui = (S && S.ui) || {}, r = clamp(+ui.split || 0.5, 0.15, 0.85);
+  ch.style.setProperty('--lw', r + 'fr'); ch.style.setProperty('--rw', (1 - r) + 'fr');
+  ch.classList.toggle('max0', ui.max === 0); ch.classList.toggle('max1', ui.max === 1);
+  if (ui.dockH) document.documentElement.style.setProperty('--dockH', clamp(ui.dockH, 110, 520) + 'px');
+  $$('.pmax').forEach(b => { const on = ui.max === +b.closest('.pane').dataset.p; b.title = on ? 'חזור לשני גרפים' : 'הגדל את הגרף הזה'; b.style.background = on ? 'var(--accent)' : ''; });
+}
+
+/* ---------- sync: crosshair + scroll ---------- */
+function mapLogical(P, Q, x) {
+  const nP = P.dispCT.length - 1, nQ = Q.dispCT.length - 1;
+  if (x >= nP) return nQ + (x - nP);
+  if (x <= 0) { const j = upperBound(Q.dispCT, P.dispCT[0]) - 1; return Math.max(0, j) + x; }
+  const k = Math.floor(x), fr = x - k, j = upperBound(Q.dispCT, P.dispCT[k]) - 1;
+  return Math.max(0, j) + fr;
+}
+function onRange(P, lr) {
+  if (!lr || !S || !S.sync || syncing || performance.now() < P.ignoreUntil) return;
+  const Q = panes[1 - P.i]; if (!Q.D || !Q.dispCT.length || !P.dispCT.length) return;
+  syncing = true; Q.ignoreUntil = performance.now() + 120;
+  try { Q.chart.timeScale().setVisibleLogicalRange({ from: mapLogical(P, Q, lr.from), to: mapLogical(P, Q, lr.to) }); } finally { syncing = false; }
+}
+function onCross(P, p) {
+  if (!S || !P.D || P.cur < 0) return;
+  const cd = p.point && p.seriesData ? p.seriesData.get(P.series) : null;
+  P.hovering = !!cd; setLegend(P, cd || null);
+  if (drawStart && drawStart.pane === P.i && p.point && p.logical != null) { const raw = P.series.coordinateToPrice(p.point.y); if (raw != null) { drawHover = pointAt(P, p.logical, raw); P.prim.req(); } }
+  if (meas && !meas.done && meas.pane === P.i && p.point && p.logical != null) { const raw = P.series.coordinateToPrice(p.point.y); if (raw != null) { meas.i2 = Math.max(0, P.disp.start + Math.round(p.logical)); meas.p2 = snapP(P, agg(P, curTF(P)), meas.i2, raw); P.prim.req(); } }
+  if (syncing || !S.sync) return;
+  const Q = panes[1 - P.i]; if (!Q.D || Q.cur < 0 || !Q.dispCT.length) return;
+  syncing = true;
+  try {
+    if (p.time != null && p.point) {
+      const k = upperBound(Q.dispCT, p.time) - 1;
+      if (k >= 0) { const A = agg(Q, curTF(Q)), bi = Q.disp.start + k, c = bi === Q.disp.last ? lastPx(Q) : A.C[bi]; Q.chart.setCrosshairPosition(c, Q.dispCT[k], Q.series); }
+    } else { Q.chart.clearCrosshairPosition(); Q.hovering = false; setLegend(Q); }
+  } finally { syncing = false; }
+}
+
+/* ---------- replay clock ---------- */
+function nextNow() { let m = Infinity; for (const P of panes) { if (!P.D) continue; const j = P.cur + 1; if (j < P.D.n) m = Math.min(m, P.D.e[j]); } return m; }
+function prevNow() { let m = -Infinity; for (const P of panes) { if (!P.D || P.cur < 0) continue; const v = P.cur > 0 ? P.D.e[P.cur - 1] : P.D.e[0] - 1; if (v < now) m = Math.max(m, v); } return m; }
+const tradePane = () => S.pos ? S.pos.pane : S.pend ? S.pend.pane : -1;
+function advance(newNow) {
+  const fwd = newNow > now; now = newNow; S.now = now;
+  for (const P of panes) {
+    if (!P.D) continue; const nc = cursorAt(P.D, now);
+    if (fwd && tradePane() === P.i) { for (let i = P.cur + 1; i <= nc; i++) { P.cur = i; processBar(P, i); } }
+    P.cur = nc;
+  }
+}
+function afterMove() { for (const P of panes) P.prim.req(); refreshBanner(); renderLive(); queueSave(playing ? (Date.now() - lastSaveAt > 15000 ? 0 : 2500) : 1500); }
+function step(k = 1) {
+  if (!S || !panes.some(P => P.D)) return false;
+  if (winLoading) return true;                                  /* keep playing while the next year loads */
+  if (nearWindowEnd()) { ensureWindow(now + DAY).then(ch => { if (!ch) refreshBanner(); }); return true; }
+  let moved = false;
+  for (let j = 0; j < k; j++) { const n = nextNow(); if (!isFinite(n)) break; advance(n); moved = true; }
+  if (!moved) { refreshBanner(); return false; }
+  for (const P of panes) incRender(P);
+  afterMove(); return true;
+}
+function back() {
+  if (!S) return;
+  if (S.pos || S.pend) { toast('אי אפשר לחזור אחורה כשיש פוזיציה או פקודה פתוחה'); return; }
+  const n = prevNow(); if (!isFinite(n)) return;
+  advance(n); for (const P of panes) { incRender(P); syncMarkers(P); } afterMove();
+}
+function candleStep() {
+  if (!S) return; const P = act(); if (!P.D) return;
+  if (P.cur < 0) { step(1); return; }
+  const A = agg(P, curTF(P)), b = A.b2[P.cur];
+  const tgt = P.cur < A.E[b] ? A.E[b] : (b + 1 < A.m ? A.E[b + 1] : -1); if (tgt < 0) { refreshBanner(); return; }
+  jumpNow(P.D.e[tgt], true);
+}
+async function jumpNow(t, keepView) {
+  if (!S || !isFinite(t)) return;
+  if (t < now && (S.pos || S.pend)) { toast('אי אפשר לחזור אחורה כשיש פוזיציה או פקודה פתוחה'); return; }
+  if (panes.some(P => needsWindow(P.D, t))) {
+    if ((S.pos || S.pend) && panes.some(P => P.D && P.D.e[P.D.n - 1] < t - 25 * DAY)) { toast('סגור את הפוזיציה או בטל את הפקודה לפני קפיצה רחוקה כזו'); return; }
+    setPlay(false); await ensureWindow(t); keepView = false;
+  }
+  if (!keepView) setPlay(false);
+  advance(t);
+  for (const P of panes) keepView ? incRender(P) : fullRender(P, false);
+  for (const P of panes) syncMarkers(P);
+  afterMove(); queueSave(300);
+}
+function nextWindowNow(from = now) {
+  const [hh, mm] = (S.winFrom || '16:30').split(':').map(Number), p = parts(IL, from), P = act();
+  for (let k = 0; k < 15; k++) {
+    const s = localToUTC(IL, p.y, p.mo, p.d + k, hh, mm); if (s <= from) continue;
+    if (!P.D) return s;
+    const i = lowerBound(P.D.t, s); if (i >= P.D.n) return NaN;
+    if (P.D.t[i] < s + 3600) return s;
+  }
+  return NaN;
+}
+function nextDayNow() {
+  const P = act(); if (!P.D) return NaN; const d = tradingDay(now);
+  for (let i = Math.max(0, P.cur + 1); i < P.D.n; i++) if (tradingDay(P.D.t[i]) > d) return P.D.e[i];
+  return NaN;
+}
+function setPlay(on) {
+  playing = !!on && !!S; clearInterval(playTimer); playTimer = null;
+  if (playing) {
+    const sp = +$('#speed').value, iv = Math.max(16, 1000 / sp), per = Math.max(1, Math.round(sp * iv / 1000));
+    playTimer = setInterval(() => { if (!step(per)) setPlay(false); }, iv);
+  } else if (S) queueSave(400);
+  $('#playIco').innerHTML = playing ? '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>' : '<path d="M8 5v14l11-7z"/>';
+  $('#bPlay').setAttribute('aria-label', playing ? 'עצור' : 'נגן');
+}
+
+/* ---------- trading engine ---------- */
+function isFlatTime(t, base) { const e = t + base; const m = Math.floor(((e + tzOff(NY, e)) % 86400 + 86400) % 86400 / 60); return m >= 16 * 60 + 45 && m < 18 * 60; }
+function processBar(P, i) {
+  const D = P.D, o = D.o[i], h = D.h[i], l = D.l[i], c = D.c[i], t = D.t[i];
+  let filledNow = false;
+  const pd = S.pend;
+  if (pd && pd.pane === P.i) {
+    let fill = null;
+    if (pd.type === 'lmt') { if (pd.side === 1 && l <= pd.price) fill = o <= pd.price ? o : pd.price; else if (pd.side === -1 && h >= pd.price) fill = o >= pd.price ? o : pd.price; }
+    else { if (pd.side === 1 && h >= pd.price) fill = o >= pd.price ? o : pd.price; else if (pd.side === -1 && l <= pd.price) fill = o <= pd.price ? o : pd.price; }
+    if (fill != null) { S.pend = null; filledNow = true; openPos(P, { side: pd.side, qty: pd.qty, entry: fill, sl: pd.sl, tp: pd.tp, tag: pd.tag, tIn: t, risk: Math.abs(fill - pd.sl) * pd.qty * pd.pv }, 'הפקודה מולאה'); }
+  }
+  const X = S.pos;
+  if (X && X.pane === P.i) {
+    const L = X.side === 1; let ex = null, why = '';
+    if (filledNow) {
+      if (L ? l <= X.sl : h >= X.sl) { ex = X.sl; why = 'סטופ'; }
+      else if (X.tp != null && (L ? c >= X.tp : c <= X.tp)) { ex = X.tp; why = 'יעד'; }
+      X.mfe = Math.max(X.mfe, (c - X.entry) * X.side); X.mae = Math.max(X.mae, (X.entry - c) * X.side);
+    } else {
+      X.mfe = Math.max(X.mfe, L ? h - X.entry : X.entry - l); X.mae = Math.max(X.mae, L ? X.entry - l : h - X.entry);
+      if (L ? o <= X.sl : o >= X.sl) { ex = o; why = 'סטופ (גאפ)'; }
+      else if (X.tp != null && (L ? o >= X.tp : o <= X.tp)) { ex = o; why = 'יעד (גאפ)'; }
+      else {
+        const slHit = L ? l <= X.sl : h >= X.sl, tpHit = X.tp != null && (L ? h >= X.tp : l <= X.tp);
+        if (slHit) { ex = X.sl; why = 'סטופ'; } else if (tpHit) { ex = X.tp; why = 'יעד'; }
+      }
+    }
+    if (ex == null && S.autoFlat && isFlatTime(t, D.r[i])) { ex = c; why = 'סוף יום'; }
+    if (ex != null) { if (why === 'סטופ' && Math.abs(X.sl - X.entry) < 1e-9) why = 'סטופ בכניסה'; closePos(ex, why, t); }
+  }
+  if (S.pend && S.pend.pane === P.i && S.autoFlat && isFlatTime(t, D.r[i])) { S.pend = null; toast('הפקודה בוטלה בסוף היום'); }
+}
+function openPos(P, p, msg) {
+  const c = cfg(P);
+  S.pos = { id: 't' + uid(), pane: P.i, sym: c.sym, pv: c.pv, mfe: 0, mae: 0, sl0: p.sl, ...p };
+  userActed = true;
+  toast(`${msg}: ${p.side === 1 ? 'לונג' : 'שורט'} ${p.qty} ${c.sym} @ ${fmtP(p.entry)}`);
+  if (playing) setPlay(false);
+  for (const Q of panes) { Q.posKey = ''; syncPosLines(Q); syncMarkers(Q); }
+  renderPos(); renderTicket(); queueSave(0);
+}
+function closePos(exit, why, tOut) {
+  const X = S.pos; if (!X) return;
+  const pts = (exit - X.entry) * X.side, fees = (S.comm || 0) * X.qty, pnl = pts * X.qty * X.pv - fees;
+  const tr = { id: X.id, n: trades.size + 1, pane: X.pane, sym: X.sym, side: X.side, qty: X.qty, entry: X.entry, sl: X.sl0, slFinal: X.sl, tp: X.tp ?? null, exit, why, pts, pnl, r: X.risk > 0 ? pnl / X.risk : 0, fees, risk: X.risk, tag: X.tag || '', note: '', tIn: X.tIn, tOut, mfe: X.mfe, mae: X.mae, day: tradingDay(X.tIn), at: Date.now() };
+  trades.set(tr.id, tr); S.pos = null;
+  toast(`${why}: ${fmtUsd(pnl)} (${fmtR(tr.r)})`);
+  if (playing) setPlay(false);
+  writeTrade(tr);
+  for (const Q of panes) { Q.posKey = ''; syncPosLines(Q); syncMarkers(Q); }
+  renderPos(); renderStats(); renderTrades(); renderTicket(); queueSave(0);
+}
+
+/* ---------- ticket ---------- */
+function readTicket() {
+  if (!S) return { ok: false, msg: '' };
+  const P = act(); if (!P.D || P.cur < 0) return { ok: false, msg: 'אין עדיין נתונים בגרף הזה.' };
+  const c = cfg(P), type = TK.type, entry = type === 'mkt' ? lastPx(P) : num($('#fEntry').value);
+  const sl = num($('#fSL').value), risk = num($('#fRisk').value); let R = num($('#fR').value);
+  if (!isFinite(entry)) return { ok: false, msg: 'הזן מחיר כניסה, או לחץ ⌖ ובחר בגרף.' };
+  if (!isFinite(sl)) return { ok: false, idle: true, msg: 'קבע סטופ: הקלד מחיר או לחץ ⌖ ובחר בגרף. הצד נקבע לפי הסטופ.' };
+  const dist = Math.abs(entry - sl); if (dist < (c.tick || .25) / 2) return { ok: false, msg: 'הסטופ צמוד מדי למחיר הכניסה.' };
+  const side = sl < entry ? 1 : -1;
+  let tp = TK.tpManual ? num($('#fTP').value) : (isFinite(R) && R > 0 ? roundTick(P, entry + side * R * dist) : NaN);
+  if (TK.tpManual && isFinite(tp)) R = (tp - entry) * side / dist;
+  if (isFinite(tp) && (tp - entry) * side <= 0) return { ok: false, msg: 'היעד בצד הלא נכון של הכניסה.' };
+  if (!(risk > 0)) return { ok: false, msg: 'הזן סיכון בדולרים.' };
+  const perC = dist * c.pv; let qty = Math.floor((risk + 1e-9) / perC), capped = false;
+  if (qty > c.max) { qty = c.max; capped = true; }
+  if (qty < 1) return { ok: false, msg: `הסטופ רחוק מדי: חוזה ${c.sym} אחד כבר מסכן ${fmtUsd(perC, false)}.` };
+  return { ok: true, type, entry, sl, tp: isFinite(tp) ? tp : null, R, side, qty, dist, risk: qty * perC, reward: isFinite(tp) ? qty * Math.abs(tp - entry) * c.pv : null, capped, tag: $('#fTag').value.trim(), pv: c.pv };
+}
+function dayCount() { const d = tradingDay(now); let w = 0, l = 0; for (const tr of trades.values()) if (tr.day === d) { if (tr.pnl > 0) w++; else if (tr.pnl < 0) l++; } return { w, l }; }
+function blockedReason() {
+  if (!S || !S.limits) return '';
+  const { w, l } = dayCount();
+  if (l >= S.maxL) return `${l} הפסדים היום. לפי התוכנית שלך, היום נגמר.`;
+  if (w >= S.maxW) return `${w} רווחים היום. לפי התוכנית שלך, נועלים את היום.`;
+  return '';
+}
+function renderTicket() {
+  if (!S) return;
+  const P = act(), tk = readTicket(), c = cfg(P);
+  $('#tkSym').textContent = c.sym || '—'; $('#tkPrice').textContent = fmtP(lastPx(P));
+  $('#sellPx').textContent = fmtP(lastPx(P)); $('#buyPx').textContent = fmtP(lastPx(P));
+  if (!TK.tpManual && document.activeElement !== $('#fTP')) $('#fTP').value = tk.ok && tk.tp != null ? tk.tp.toFixed(2) : '';
+  else if (TK.tpManual && tk.ok && isFinite(tk.R) && document.activeElement !== $('#fR')) $('#fR').value = tk.R.toFixed(2);
+  const calc = $('#calc'); calc.classList.toggle('err', !tk.ok && !tk.idle);
+  if (tk.ok) calc.innerHTML = `<span class="big">${tk.side === 1 ? 'לונג' : 'שורט'} · <b>${tk.qty}</b> ${esc(c.sym)} · סטופ <b class="num">${tk.dist.toFixed(2)}</b> נק׳</span><span>סיכון <b class="num">${fmtUsd(tk.risk, false)}</b>${tk.reward != null ? ` · יעד <b class="num">${fmtUsd(tk.reward, false)}</b> (<span class="num">${tk.R.toFixed(2)}R</span>)` : ''}${tk.capped ? ` · <span class="muted">הוגבל ל-${c.max} חוזים</span>` : ''}</span>`;
+  else calc.textContent = tk.msg;
+  const br = blockedReason(), bl = $('#blocked'); bl.hidden = !br;
+  if (br) bl.innerHTML = `<span>${esc(br)}</span><button class="btn small" type="button" id="bBlkNext">ליום המסחר הבא</button>`;
+  const busy = !!(S.pos || S.pend), atEnd = !isFinite(nextNow());
+  $('#bBuy').disabled = !tk.ok || tk.side !== 1 || busy || !!br || atEnd;
+  $('#bSell').disabled = !tk.ok || tk.side !== -1 || busy || !!br || atEnd;
+  for (const Q of panes) syncPosLines(Q, tk);
+}
+function placeOrder(side) {
+  const tk = readTicket(), P = act(); if (!tk.ok || tk.side !== side || S.pos || S.pend || blockedReason()) return;
+  if (tk.type === 'mkt') openPos(P, { side, qty: tk.qty, entry: tk.entry, sl: tk.sl, tp: tk.tp, tag: tk.tag, tIn: P.D.t[P.cur], risk: tk.risk }, 'נכנסת');
+  else {
+    S.pend = { pane: P.i, type: tk.type, side, price: tk.entry, qty: tk.qty, sl: tk.sl, tp: tk.tp, tag: tk.tag, pv: tk.pv, tPlaced: now };
+    userActed = true; toast(`פקודת ${tk.type === 'lmt' ? 'לימיט' : 'סטופ'} ${side === 1 ? 'קנייה' : 'מכירה'} ${tk.qty} ${cfg(P).sym} @ ${fmtP(tk.entry)}`);
+    for (const Q of panes) { Q.posKey = ''; syncPosLines(Q); } renderPos(); queueSave(0);
+  }
+  $('#fSL').value = ''; $('#fTP').value = ''; $('#fEntry').value = ''; TK.tpManual = false; $('#fR').value = String(S.rr || 2);
+  renderTicket();
+}
+
+/* ---------- panels ---------- */
+function renderLive() {
+  if (!S) return;
+  const other = S.tz === IL ? NY : IL;
+  $('#clkMain').textContent = now ? fmtDT(S.tz, now) : '—';
+  $('#clkSub').textContent = now ? `${other === NY ? 'NY' : 'IL'} ${fmtHM(other, now)}` : '';
+  for (const P of panes) if (!P.hovering) setLegend(P);
+  renderPos(); renderTicket();
+}
+function renderPos() {
+  const X = S && S.pos, pd = S && S.pend;
+  $('#posEmpty').hidden = !!(X || pd); $('#posBody').hidden = !X; $('#pendBody').hidden = !pd;
+  const chip = $('#posChip');
+  if (X) {
+    const P = panes[X.pane], px = lastPx(P), pts = (px - X.entry) * X.side, pnl = pts * X.qty * X.pv - (S.comm || 0) * X.qty;
+    chip.textContent = `${X.side === 1 ? 'לונג' : 'שורט'} ${X.sym}`; chip.style.color = X.side === 1 ? 'var(--up)' : 'var(--down)';
+    const el = $('#posPnl'); el.textContent = fmtUsd(pnl); el.className = 'pnl num ' + (pnl >= 0 ? 'up' : 'down');
+    $('#posR').textContent = `${fmtR(X.risk > 0 ? pnl / X.risk : 0)} · ${pts >= 0 ? '+' : ''}${pts.toFixed(2)} נק׳`;
+    $('#posKv').innerHTML = `<dt>כמות</dt><dd>${X.qty} ${esc(X.sym)}</dd><dt>כניסה</dt><dd>${fmtP(X.entry)}</dd><dt>סיכון התחלתי</dt><dd>${fmtUsd(X.risk, false)}</dd><dt>MFE / MAE</dt><dd>${X.mfe.toFixed(2)} / ${X.mae.toFixed(2)}</dd>`;
+    if (document.activeElement !== $('#pSL')) $('#pSL').value = X.sl.toFixed(2);
+    if (document.activeElement !== $('#pTP')) $('#pTP').value = X.tp != null ? X.tp.toFixed(2) : '';
+  } else if (pd) {
+    chip.textContent = 'פקודה ממתינה'; chip.style.color = 'var(--amber)';
+    $('#pendKv').innerHTML = `<dt>פקודה</dt><dd>${pd.type === 'lmt' ? 'LIMIT' : 'STOP'} ${pd.side === 1 ? 'BUY' : 'SELL'} ${esc(cfg(panes[pd.pane]).sym)}</dd><dt>מחיר</dt><dd>${fmtP(pd.price)}</dd><dt>כמות</dt><dd>${pd.qty}</dd><dt>סטופ / יעד</dt><dd>${fmtP(pd.sl)} / ${fmtP(pd.tp)}</dd>`;
+  } else { chip.textContent = 'אין'; chip.style.color = ''; }
+  const bp = $('#bigPos'), big = $('#app').classList.contains('big');
+  if (big && X) {
+    const P = panes[X.pane], pnl = (lastPx(P) - X.entry) * X.side * X.qty * X.pv - (S.comm || 0) * X.qty;
+    bp.innerHTML = `<span>${X.side === 1 ? 'לונג' : 'שורט'} ${X.qty} ${esc(X.sym)}</span><b class="num ${pnl >= 0 ? 'up' : 'down'}">${fmtUsd(pnl)}</b><span class="muted num">סטופ ${fmtP(X.sl)} · יעד ${fmtP(X.tp)}</span><button class="btn small danger" type="button" id="bBigClose">סגור בשוק</button>`;
+    bp.hidden = false;
+  } else if (big && pd) { bp.innerHTML = `<span>פקודה ממתינה: ${pd.type === 'lmt' ? 'לימיט' : 'סטופ'} ${pd.side === 1 ? 'קנייה' : 'מכירה'} @ <b class="num">${fmtP(pd.price)}</b></span>`; bp.hidden = false; }
+  else bp.hidden = true;
+}
+function calcStats(list) {
+  let net = 0, w = 0, l = 0, gw = 0, gl = 0, sr = 0, eq = 0, peak = 0, dd = 0; const curve = [0];
+  for (const tr of list) { net += tr.pnl; sr += tr.r; if (tr.pnl > 0) { w++; gw += tr.pnl; } else if (tr.pnl < 0) { l++; gl -= tr.pnl; } eq += tr.pnl; peak = Math.max(peak, eq); dd = Math.max(dd, peak - eq); curve.push(eq); }
+  return { n: list.length, net, wr: list.length ? w / list.length : NaN, pf: gl > 0 ? gw / gl : (gw > 0 ? Infinity : NaN), ar: list.length ? sr / list.length : NaN, tr: sr, dd, curve };
+}
+const sortedTrades = () => [...trades.values()].sort((a, b) => (a.tOut - b.tOut) || (a.n - b.n));
+function renderStats() {
+  if (!S) return;
+  const st = calcStats(sortedTrades());
+  $('#stN').textContent = `${st.n} עסקאות`;
+  $('#stBal').textContent = '$' + (S.startBal + st.net).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  const set = (id, txt, cls = '') => { const e = $(id); e.textContent = txt; e.className = cls; };
+  set('#stNet', fmtUsd(st.net), st.net > 0 ? 'up' : st.net < 0 ? 'down' : '');
+  set('#stWR', isFinite(st.wr) ? Math.round(st.wr * 100) + '%' : '—');
+  set('#stPF', isFinite(st.pf) ? st.pf.toFixed(2) : (st.pf === Infinity ? '∞' : '—'));
+  set('#stAR', fmtR(st.ar), st.ar > 0 ? 'up' : st.ar < 0 ? 'down' : '');
+  set('#stDD', st.dd ? '-$' + Math.round(st.dd).toLocaleString('en-US') : '$0', st.dd ? 'down' : '');
+  set('#stTR', fmtR(st.tr), st.tr > 0 ? 'up' : st.tr < 0 ? 'down' : '');
+  const cv = st.curve, mn = Math.min(...cv), mx = Math.max(...cv), rg = (mx - mn) || 1;
+  const pts = cv.map((v, i) => `${(i / Math.max(1, cv.length - 1) * 296 + 2).toFixed(1)},${(33 - (v - mn) / rg * 30).toFixed(1)}`).join(' ');
+  const zy = (33 - (0 - mn) / rg * 30).toFixed(1), col = cv[cv.length - 1] >= 0 ? 'var(--up)' : 'var(--down)';
+  $('#spark').innerHTML = cv.length > 1 ? `<line x1="0" x2="300" y1="${zy}" y2="${zy}" stroke="var(--line)" stroke-dasharray="3 3"/><polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>` : '';
+  const { w, l } = dayCount(); $('#stToday').textContent = `היום: ${w} רווחים · ${l} הפסדים` + (S.limits ? ` (מגבלה: ${S.maxL} הפסדים או ${S.maxW} רווחים)` : '');
+}
+function renderTrades() {
+  const list = sortedTrades().reverse(), tz = S ? S.tz : IL;
+  $('#tCount').textContent = list.length ? `(${list.length})` : '';
+  $('#tEmpty').hidden = list.length > 0;
+  $('#tBody').innerHTML = list.map(tr => `<tr data-id="${esc(tr.id)}"><td class="m">${tr.n}</td><td>${esc(tr.sym)}</td><td class="m">${fmtDT(tz, tr.tIn)}</td><td class="${tr.side === 1 ? 'side-l' : 'side-s'}">${tr.side === 1 ? 'לונג' : 'שורט'}</td><td class="m">${tr.qty}</td><td class="m">${fmtP(tr.entry)}</td><td class="m">${fmtP(tr.sl)}${tr.slFinal !== tr.sl ? ' → ' + fmtP(tr.slFinal) : ''}</td><td class="m">${fmtP(tr.tp)}</td><td class="m">${fmtP(tr.exit)}</td><td>${esc(tr.why)}</td><td class="m ${tr.pts >= 0 ? 'up' : 'down'}">${(tr.pts >= 0 ? '+' : '') + tr.pts.toFixed(2)}</td><td class="m ${tr.r >= 0 ? 'up' : 'down'}">${fmtR(tr.r)}</td><td class="m ${tr.pnl >= 0 ? 'up' : 'down'}">${fmtUsd(tr.pnl)}</td><td class="m">${(tr.mfe || 0).toFixed(2)} / ${(tr.mae || 0).toFixed(2)}</td><td>${esc(tr.tag)}</td><td><input type="text" data-note="${esc(tr.id)}" value="${esc(tr.note)}" placeholder="מה למדתי?" aria-label="הערה לעסקה ${tr.n}"></td></tr>`).join('');
+}
+const TOOL_TIPS = {
+  measure: 'לחץ על נקודת ההתחלה ואז על נקודת הסוף. אפשר גם Shift+לחיצה בכל מצב',
+  hline: 'לחץ על הגרף כדי לשים קו אופקי', hray: 'לחץ על הנקודה שממנה הקרן תצא ימינה', vline: 'לחץ על הנר שדרכו יעבור הקו האנכי',
+  line: 'לחץ על נקודת ההתחלה ואז על נקודת הסוף · Shift = קו ישר', ray: 'לחץ על נקודת ההתחלה ואז על נקודה שקובעת את הכיוון · Shift = קרן ישרה',
+  fib: 'לחץ על תחילת התנועה (רמה 1) ואז על סוף התנועה (רמה 0)',
+  long: 'לחץ על מחיר הכניסה', short: 'לחץ על מחיר הכניסה',
+  rect: 'לחץ על פינה אחת ואז על הפינה הנגדית', erase: 'לחץ על ציור כדי למחוק אותו',
+};
+const PICK_NAMES = { fEntry: 'מחיר הכניסה', fSL: 'הסטופ', fTP: 'היעד' };
+function refreshBanner() {
+  let txt = '', onlyActive = true;
+  if (pickField) txt = `לחץ על הגרף כדי לבחור את ${PICK_NAMES[pickField]}`;
+  else if (drawStart) txt = (drawStart.tool === 'long' || drawStart.tool === 'short' ? `עכשיו לחץ על הסטופ. היעד נקבע לפי ${S.rr || 2}R ואפשר לגרור אותו אחר כך` : drawStart.tool === 'fib' ? 'עכשיו לחץ על סוף התנועה (רמה 0)' : 'עכשיו לחץ על הנקודה השנייה') + ' · קליק ימני מבטל';
+  else if (meas && !meas.done) txt = 'לחץ שוב כדי לסיים את המדידה · קליק ימני מבטל';
+  else if (tool !== 'none') { txt = (TOOL_TIPS[tool] || '') + ' · קליק ימני מבטל'; onlyActive = false; }
+  else if (S && panes.some(P => P.D) && !isFinite(nextNow())) { txt = 'סוף הנתונים. ייבא עוד ימים או קפוץ אחורה.'; onlyActive = false; }
+  for (const P of panes) { const b = $('.pbanner', P.el), show = !!txt && (!onlyActive || P.i === (S ? S.active : 0)); b.textContent = show ? txt : ''; b.hidden = !show; }
+}
+function toast(msg) { const box = $('#toast'), d = document.createElement('div'); d.textContent = msg; box.appendChild(d); while (box.children.length > 3) box.firstChild.remove(); setTimeout(() => d.remove(), 3200); }
+function setActive(i) {
+  if (!S || S.active === i || !panes[i].D) return;
+  S.active = i; for (const P of panes) P.el.classList.toggle('active', P.i === i);
+  if (TK.type !== 'mkt' && panes[i].cur >= 0) $('#fEntry').value = lastPx(panes[i]).toFixed(2);
+  if (!pickField) { $('#fSL').value = ''; $('#fTP').value = ''; TK.tpManual = false; }
+  renderTicket(); refreshBanner(); queueSave();
+}
+
+/* ---------- persistence ---------- */
+const sessCol = () => db.collection(ROOT + '/sessions');
+const dsCol = () => db.collection(ROOT + '/datasets');
+const tradeCol = sid => db.doc(ROOT + '/sessions/' + sid).collection('trades');
+let saveTimer = null, saving = false, saveAgain = false, lastSaveAt = 0;
+function setSave(state, txt) { $('#saveState').className = 'chip ' + state; $('#saveTxt').textContent = txt; }
+function sessionBody() { const b = JSON.parse(JSON.stringify(S)); delete b.id; return b; }
+function queueSave(delay = 1500) { if (!S) return; clearTimeout(saveTimer); saveTimer = setTimeout(doSave, delay); }
+async function doSave() {
+  saveTimer = null; if (!S) return;
+  if (!db) { const i = memSessions.findIndex(x => x.id === S.id), b = { id: S.id, ...sessionBody() }; if (i >= 0) memSessions[i] = b; else memSessions.push(b); renderSessSel(); return; }
+  if (!bootPicked) { pendingSave = true; return; }
+  if (saving) { saveAgain = true; return; }
+  saving = true; setSave('warn', 'שומר…');
+  try { S.updatedAt = Date.now(); await sessCol().doc(S.id).set(sessionBody()); lastSaveAt = Date.now(); setSave('ok', 'נשמר'); }
+  catch (e) { setSave('err', e && e.code === 'quota_exceeded' ? 'האחסון מלא' : 'השמירה נכשלה'); console.warn(e); }
+  saving = false; if (saveAgain) { saveAgain = false; doSave(); }
+}
+async function flushSave() { if (saveTimer) { clearTimeout(saveTimer); await doSave(); } }
+async function writeTrade(tr) {
+  if (!db) return;
+  try { await tradeCol(S.id).doc(tr.id).set(tr); } catch (e) { setSave('err', 'שמירת העסקה נכשלה'); console.warn(e); }
+}
+
+/* ---------- sessions ---------- */
+function paneCfgFromDs(ds) { const sym = ds ? (INSTR[ds.symbol] ? ds.symbol : 'MNQ') : 'ES'; const p = INSTR[sym]; return { ds: ds ? ds.id : null, sym, pv: p.pv, tick: p.tick, max: p.max }; }
+function defaults() { return { name: 'סשן', panes: [{ ds: null, sym: 'MNQ', pv: 2, tick: .25, max: 40 }, { ds: null, sym: 'ES', pv: 50, tick: .25, max: 4 }], now: 0, tf: 60, tz: IL, active: 0, sync: true, pos: null, pend: null, draw: [[], []], startBal: 50000, risk: 250, rr: 2, comm: 0, autoFlat: true, limits: true, maxL: 2, maxW: 2, winFrom: '16:30', winTo: '17:30', ind: defInd(), magnet: true, toolCol: {}, fib: { ...FIB_DEF, levels: [...FIB_DEF.levels] }, createdAt: Date.now(), updatedAt: Date.now() }; }
+function defInd() { return { sess: { on: true, lines: true, list: SESS_DEF.map(d => ({ ...d })) }, fvg: { on: true, src: 0, ifvg: true, max: 6, min: 0 } }; }
+/* documents from the database come back frozen: copy them before the page mutates anything */
+function normalize(sd0) { const sd = JSON.parse(JSON.stringify(sd0 || {})), b = defaults(), s = { ...b, ...sd }; s.panes = [0, 1].map(i => ({ ...b.panes[i], ...((sd.panes || [])[i] || {}) })); s.draw = [0, 1].map(i => Array.isArray((sd.draw || [])[i]) ? sd.draw[i] : []);
+  const di = defInd(), si = sd.ind || {}; s.ind = { sess: { ...di.sess, ...(si.sess || {}) }, fvg: { ...di.fvg, ...(si.fvg || {}) } };
+  if (!Array.isArray(s.ind.sess.list) || !s.ind.sess.list.length) s.ind.sess.list = di.sess.list;
+  s.fib = { ...FIB_DEF, ...(sd.fib || {}) }; if (!Array.isArray(s.fib.levels) || !s.fib.levels.length) s.fib.levels = [...FIB_DEF.levels];
+  return s; }
+const dsMeta = id => id ? allDs().find(x => x.id === id) : null;
+/* sources of a dataset: yearly parts (older history, 1m) + the main file (recent data) */
+const DAY = 86400;
+function srcList(meta) {
+  const out = (meta.parts || []).map(x => ({ key: x.key, assetId: x.assetId, firstT: x.firstT, lastT: x.lastT }));
+  if (meta.assetId) out.push({ key: 'main', assetId: meta.assetId, firstT: meta.mainFirstT ?? meta.firstT, lastT: meta.mainLastT ?? meta.lastT });
+  return out.sort((a, b) => a.firstT - b.firstT);
+}
+const fullRange = meta => { const l = srcList(meta); return l.length ? [Math.min(...l.map(x => x.firstT)), Math.max(...l.map(x => x.lastT))] : [meta.firstT, meta.lastT]; };
+const srcCache = new Map();   /* assetId -> decoded data (a few kept) */
+async function loadSrc(meta, src) {
+  if (srcCache.has(src.assetId)) { const d = srcCache.get(src.assetId); srcCache.delete(src.assetId); srcCache.set(src.assetId, d); return d; }
+  const r = await fetch('/_blob/' + src.assetId); if (!r.ok) throw new Error('לא הצלחתי לטעון את הנתונים של ' + meta.name + '.');
+  const d = dataFromCompact({ id: meta.id }, await maybeGz(await r.text()));
+  srcCache.set(src.assetId, d); while (srcCache.size > 4) srcCache.delete(srcCache.keys().next().value);
+  return d;
+}
+function pickSrcs(list, t) {
+  if (!list.length) return [];
+  let k = list.findIndex(x => t >= x.firstT && t <= x.lastT + 3 * DAY);
+  if (k < 0) k = t < list[0].firstT ? 0 : t > list[list.length - 1].lastT ? list.length - 1 : list.findIndex(x => x.firstT > t);
+  const pick = [k];
+  if (k > 0 && t - list[k].firstT < 25 * DAY) pick.unshift(k - 1);          /* history before the start of this part */
+  if (k + 1 < list.length && list[k].lastT - t < 2 * DAY) pick.push(k + 1);  /* about to cross into the next part */
+  return pick.map(i => list[i]);
+}
+async function loadWindow(meta, t) {
+  const list = srcList(meta); if (!list.length) throw new Error('קובץ הנתונים של ' + meta.name + ' לא נמצא.');
+  if (!isFinite(t)) t = list[list.length - 1].lastT;
+  const pick = pickSrcs(list, t), sig = pick.map(x => x.assetId).join('+');
+  const parts = []; for (const x of pick) parts.push(await loadSrc(meta, x));
+  let D;
+  if (parts.length === 1) D = { ...parts[0] };
+  else {
+    let n = 0; for (const p of parts) n += p.n;
+    const mk = () => new Float64Array(n), t2 = mk(), o = mk(), h = mk(), l = mk(), c = mk(), r = mk(), e = mk(); let m = 0, lastEnd = -Infinity; const ress = new Set();
+    for (const p of parts) for (let i = 0; i < p.n; i++) { if (p.t[i] < lastEnd) continue; t2[m] = p.t[i]; o[m] = p.o[i]; h[m] = p.h[i]; l[m] = p.l[i]; c[m] = p.c[i]; r[m] = p.r[i]; e[m] = p.e[i]; lastEnd = p.e[i]; ress.add(p.r[i]); m++; }
+    const cut = x => x.slice(0, m);
+    D = { n: m, t: cut(t2), o: cut(o), h: cut(h), l: cut(l), c: cut(c), r: cut(r), e: cut(e), ress: [...ress].sort((a, b) => a - b) }; D.base = D.ress[0] || 60;
+  }
+  D.id = meta.id; D.meta = meta; D.sig = sig; D.full = fullRange(meta); D.win = [D.t[0], D.t[D.n - 1]];
+  return D;
+}
+/* does the replay at time t need a different slice of history in memory? */
+const needsWindow = (D, t) => !!(D && D.meta && (D.meta.parts || []).length) && pickSrcs(srcList(D.meta), t).map(x => x.assetId).join('+') !== D.sig;
+let winLoading = false, winQ = Promise.resolve(false);
+const ensureWindow = t => (winQ = winQ.then(() => ensureWindowNow(t), () => ensureWindowNow(t)));
+async function ensureWindowNow(t) {
+  if (!S) return false; let changed = false;
+  for (const P of panes) {
+    if (!needsWindow(P.D, t)) continue;
+    if (!changed) { winLoading = true; toast('טוען את התקופה הזו…'); }
+    try { const D = await loadWindow(P.D.meta, t); P.D = D; changed = true; } catch (e) { toast(e.message); }
+  }
+  if (changed) {
+    for (const P of panes) if (P.D) { P.AG = new Map(); P.sessCache = null; P.fvgCache = null; P.fvgAll = null; P.segs = null; P.cur = cursorAt(P.D, now); P.disp = { tf: 0, ds: '', start: 0, last: -1 }; P.dispCT = []; }
+    syncControls(); renderAllPanes(false); renderLive();
+  }
+  winLoading = false; return changed;
+}
+/* the loaded slice ends soon but the dataset goes on: load the next part in the background */
+function nearWindowEnd() { for (const P of panes) { const D = P.D; if (D && D.win && D.full && D.win[1] < D.full[1] - 60 && (P.cur >= D.n - 2 || D.e[D.n - 1] - now < DAY) && needsWindow(D, now + DAY)) return true; } return false; }
+/* "next day/window" at the end of the loaded year: load the next one and look again */
+async function findNext(fn) {
+  let t = fn();
+  if (!isFinite(t) && panes.some(P => P.D && P.D.win && P.D.full && P.D.win[1] < P.D.full[1] - 60)) { const P = act(); await ensureWindow(Math.max(now, P.D ? P.D.win[1] : now) + DAY); t = fn(); }
+  return t;
+}
+async function loadData(meta) {
+  if (dataCache.has(meta.id)) return dataCache.get(meta.id);
+  if (!meta.assetId) throw new Error('קובץ הנתונים של ' + meta.name + ' לא נמצא.');
+  const r = await fetch('/_blob/' + meta.assetId); if (!r.ok) throw new Error('לא הצלחתי לטעון את הנתונים של ' + meta.name + '.');
+  const d = dataFromCompact(meta, await maybeGz(await r.text())); dataCache.set(meta.id, d); return d;
+}
+async function getMeta(id) {
+  let m = dsMeta(id);
+  if (!m && db && id) { try { const s = await dsCol().doc(id).get(); if (s.exists) m = { id: s.id, ...s.data() }; } catch (e) {} }
+  return m;
+}
+function defaultStart(Ds) {
+  const firsts = Ds.filter(Boolean).map(d => d.full ? d.full[0] : d.t[0]); if (!firsts.length) return 0;
+  const p = parts(IL, Math.max(...firsts));
+  return localToUTC(IL, p.y, p.mo, p.d + 2, 16, 0);
+}
+async function loadSession(sd) {
+  setPlay(false); await flushSave(); if (!S) showLoading(true);
+  try { await loadSessionInner(sd); } finally { showLoading(false); if (!S) showWelcome(); }
+}
+async function loadSessionInner(sd) {
+  const s = normalize(sd); s.id = sd.id;
+  const Ds = [];
+  for (let i = 0; i < 2; i++) {
+    const id = s.panes[i].ds; Ds[i] = null; if (!id) continue;
+    const m = await getMeta(id); if (!m) { toast('הנתונים של אחד הגרפים נמחקו'); continue; }
+    try { Ds[i] = await loadWindow(m, s.now || Infinity); } catch (e) { toast(e.message); }
+  }
+  S = s;
+  if (!S.now) S.now = defaultStart(Ds);
+  now = S.now;
+  for (let i = 0; i < 2; i++) if (Ds[i] && needsWindow(Ds[i], now)) { try { Ds[i] = await loadWindow(Ds[i].meta, now); } catch (e) { toast(e.message); } }
+  if (!Ds[S.active]) S.active = Ds[0] ? 0 : 1;
+  for (const P of panes) {
+    P.D = Ds[P.i]; P.AG = new Map(); P.sessCache = null; P.fvgCache = null; P.fvgAll = null; P.segs = null; P.cur = P.D ? cursorAt(P.D, now) : -1; P.disp = { tf: 0, ds: '', start: 0, last: -1 }; P.dispCT = []; P.posKey = ''; P.hovering = false;
+    P.el.hidden = !P.D && P.i === 1; P.el.classList.toggle('active', P.i === S.active);
+    paneEmpty(P, P.D ? '' : `<span>אין נתונים לגרף הזה.</span><button class="btn" type="button" data-open-settings>בחר נתונים</button>`);
+    P.series.applyOptions({ priceFormat: { type: 'price', precision: (String(cfg(P).tick).split('.')[1] || '').length || 0, minMove: cfg(P).tick || .25 } });
+    syncHLines(P);
+  }
+  $('#charts').classList.toggle('single', !Ds[1]); if (!S.ui) S.ui = {}; if (!Ds[1] && S.ui.max === 1) S.ui.max = null; applyLayout();
+  if (unsubTrades) { unsubTrades(); unsubTrades = null; }
+  trades = new Map();
+  if (db) {
+    unsubTrades = tradeCol(S.id).onSnapshot(snap => {
+      const m = new Map(); snap.docs.forEach(d => { const v = d.data(); if (v) m.set(d.id, JSON.parse(JSON.stringify(v))); });
+      for (const [k, v] of trades) if (!m.has(k) && v.at && Date.now() - v.at < 10000) m.set(k, v);
+      trades = m; renderTrades(); renderStats(); for (const P of panes) syncMarkers(P); renderTicket();
+    }, e => console.warn(e));
+  } else { trades = memTrades.get(S.id) || new Map(); memTrades.set(S.id, trades); }
+  $('#fRisk').value = S.risk; $('#fR').value = S.rr; TK.tpManual = false;
+  sel = null; drag = null; drawStart = null; renderSelBar(); syncMagnet();
+  $('#welcome').hidden = true;
+  syncControls();
+  renderAllPanes(false); renderLive(); renderStats(); renderTrades(); renderSessSel(); refreshBanner();
+  if (now) { const P = act(); $('#jDate').value = fmtDateInput(now, S.tz); if (P.D) { const fr = P.D.full || [P.D.t[0], P.D.t[P.D.n - 1]]; $('#jDate').min = fmtDateInput(fr[0], S.tz); $('#jDate').max = fmtDateInput(fr[1], S.tz); } }
+}
+function syncControls() {
+  const tfs = $('#tfs'); tfs.innerHTML = '';
+  const bases = panes.filter(P => P.D).map(P => P.D.base), base = bases.length ? Math.min(...bases) : 60;
+  for (const [s, l] of TFS) { const b = document.createElement('button'); b.type = 'button'; b.textContent = l; b.dataset.tf = s; b.disabled = !(s >= base && s % base === 0); b.className = s === S.tf ? 'on' : ''; tfs.appendChild(b); }
+  $$('#tzSeg button').forEach(b => b.classList.toggle('on', b.dataset.tz === S.tz));
+  $('#syncOn').checked = !!S.sync; $('#qSess').checked = !!S.ind.sess.on; $('#qFvg').checked = !!S.ind.fvg.on;
+  $('#bNextWin').textContent = `לחלון הבא (${S.winFrom})`;
+}
+function renderSessSel() {
+  const sel = $('#sessSel'), list = (db ? sessions : memSessions).slice();
+  if (S && !list.some(x => x.id === S.id)) list.unshift({ id: S.id, name: S.name });
+  sel.innerHTML = list.length ? list.map(x => `<option value="${esc(x.id)}">${esc(x.name || 'סשן')}</option>`).join('') : '<option value="">אין סשנים</option>';
+  if (S) sel.value = S.id;
+}
+function bestPair() {
+  const ds = allDs().slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  return [ds.find(d => d.symbol === 'MNQ' || d.symbol === 'NQ') || ds[0] || null, ds.find(d => d.symbol === 'ES' || d.symbol === 'MES') || null];
+}
+async function createSession(left, right, extra = {}) {
+  const s = { ...defaults(), ...extra };
+  if (!extra.panes) s.panes = [paneCfgFromDs(left), right ? paneCfgFromDs(right) : { ds: null, sym: 'ES', pv: 50, tick: .25, max: 4 }];
+  const id = 's' + uid(); userActed = true;
+  if (db) { try { await sessCol().doc(id).set(s); } catch (e) { toast('יצירת הסשן נכשלה'); console.warn(e); return; } }
+  else memSessions.push({ id, ...s });
+  await loadSession({ id, ...s });
+}
+
+/* ---------- welcome / empty ---------- */
+let loadingSess = false;
+function showLoading(on) {
+  loadingSess = on; if (!on) return;
+  $('#welcome').hidden = false; $('#wTitle').textContent = 'טוען את הנתונים…';
+  $('#wText').textContent = 'יש כאן כמה שנים של נרות, אז הטעינה לוקחת כמה שניות.'; $('#wSteps').hidden = true; $('#wActions').innerHTML = ''; $('#wPaste').hidden = true; $('#wMsg').textContent = '';
+}
+function showWelcome() {
+  if (S || loadingSess) return;
+  $('#welcome').hidden = false; $('#wPaste').hidden = false;
+  const has = allDs().length > 0;
+  $('#wTitle').textContent = has ? 'יש נתונים. צור סשן כדי להתחיל' : 'מתחילים עם נתונים אמיתיים';
+  $('#wText').textContent = has ? 'בחר איזה נתונים יהיו בגרף השמאלי ובגרף הימני, ומאיזה יום להתחיל.' : 'הריפליי רץ על נתוני CME אמיתיים שאתה מוציא מ-TradingView: קובץ אחד של NQ או MNQ וקובץ אחד של ES. הם נשמרים כאן, וכל טיים פריים נבנה מהם.';
+  $('#wSteps').hidden = has;
+  $('#wActions').innerHTML = has ? '<button class="btn primary" type="button" id="wNew">צור סשן</button><button class="btn" type="button" id="wPick">ייבא עוד קבצים</button>' : '<button class="btn primary" type="button" id="wPick">בחר קבצי CSV</button>';
+}
+
+/* ---------- dialogs ---------- */
+let editing = false;
+function fillDs(sel, cur, allowNone) {
+  const list = allDs();
+  sel.innerHTML = (allowNone ? '<option value="">ללא (גרף אחד)</option>' : '') + list.map(d => `<option value="${esc(d.id)}">${esc(d.name)} · ${(d.bars || 0).toLocaleString('en-US')} נרות</option>`).join('');
+  sel.value = cur || (allowNone ? '' : (list[0] ? list[0].id : ''));
+}
+function setPaneFields(i, c) { $('#sIn' + i).value = INSTR[c.sym] ? c.sym : 'X'; $('#sMax' + i).value = c.max; $('#sPV' + i).value = c.pv; $('#sTk' + i).value = c.tick; $('#sCus' + i).hidden = !!INSTR[c.sym]; }
+async function openSessDlg(edit) {
+  if (!allDs().length) { openData(); return; }
+  editing = edit;
+  $('#sessTitle').textContent = edit ? 'הגדרות סשן' : 'סשן חדש'; $('#bSessSave').textContent = edit ? 'שמור' : 'צור סשן';
+  $('#bSessDel').hidden = !edit; $('#bSessDel').textContent = 'מחק סשן'; delete $('#bSessDel').dataset.armed;
+  $('#sessMsg').textContent = ''; $('#sessMsg').className = 'msg';
+  const src = edit ? S : (() => { const [l, r] = bestPair(), d = defaults(); d.panes = [paneCfgFromDs(l), r ? paneCfgFromDs(r) : { ds: null, sym: 'ES', pv: 50, tick: .25, max: 4 }]; d.name = 'סשן ' + ((db ? sessions : memSessions).length + 1); return d; })();
+  fillDs($('#sDs0'), src.panes[0].ds, false); fillDs($('#sDs1'), src.panes[1].ds, true);
+  setPaneFields(0, src.panes[0]); setPaneFields(1, src.panes[1]);
+  $('#sName').value = src.name; $('#sBal').value = src.startBal; $('#sRisk').value = src.risk; $('#sRR').value = src.rr; $('#sComm').value = src.comm;
+  $('#sWinFrom').value = src.winFrom; $('#sWinTo').value = src.winTo; $('#sFlat').checked = !!src.autoFlat; $('#sLim').checked = !!src.limits; $('#sMaxL').value = src.maxL; $('#sMaxW').value = src.maxW;
+  $('#sStartA').hidden = edit; $('#sStartB').hidden = edit;
+  $('#sDs0').disabled = $('#sDs1').disabled = edit && !!(S.pos || S.pend);
+  if (!edit) await setDefaultStart();
+  $('#dlgSess').showModal();
+}
+async function setDefaultStart() {
+  try {
+    const ids = [$('#sDs0').value, $('#sDs1').value].filter(Boolean), Ds = [];
+    for (const id of ids) { const m = dsMeta(id); if (m) Ds.push(await loadWindow(m, Infinity)); }
+    const t = defaultStart(Ds); if (!t) return;
+    const p = parts(IL, t); $('#sDate').value = fmtDateInput(t); $('#sTime').value = `${pad(p.h)}:${pad(p.mi)}`;
+  } catch (e) { $('#sessMsg').textContent = e.message; $('#sessMsg').className = 'msg err'; }
+}
+function readPane(i) {
+  const v = $('#sIn' + i).value, p = INSTR[v];
+  return { ds: $('#sDs' + i).value || null, sym: p ? v : 'CUSTOM', pv: p ? p.pv : num($('#sPV' + i).value), tick: p ? p.tick : num($('#sTk' + i).value), max: Math.max(1, Math.floor(num($('#sMax' + i).value) || (p ? p.max : 1))) };
+}
+async function saveSessDlg(ev) {
+  ev.preventDefault();
+  const pz = [readPane(0), readPane(1)];
+  const vals = { name: $('#sName').value.trim() || 'סשן', startBal: num($('#sBal').value) || 0, risk: num($('#sRisk').value), rr: num($('#sRR').value) || 2, comm: num($('#sComm').value) || 0, winFrom: $('#sWinFrom').value || '16:30', winTo: $('#sWinTo').value || '17:30', autoFlat: $('#sFlat').checked, limits: $('#sLim').checked, maxL: Math.max(1, Math.floor(num($('#sMaxL').value) || 2)), maxW: Math.max(1, Math.floor(num($('#sMaxW').value) || 2)) };
+  const bad = m => { $('#sessMsg').textContent = m; $('#sessMsg').className = 'msg err'; };
+  if (!pz[0].ds) return bad('בחר נתונים לגרף השמאלי.');
+  if (pz.some(p => !(p.pv > 0) || !(p.tick > 0)) || !(vals.risk > 0)) return bad('מלא $ לנקודה, טיק וסיכון גדולים מאפס.');
+  if (editing) {
+    const dsChanged = pz[0].ds !== S.panes[0].ds || pz[1].ds !== S.panes[1].ds;
+    Object.assign(S, vals); S.panes = pz; $('#dlgSess').close();
+    if (dsChanged) { await doSave(); await loadSession({ ...sessionBody(), id: S.id }); }
+    else { for (const P of panes) P.series.applyOptions({ priceFormat: { type: 'price', precision: (String(cfg(P).tick).split('.')[1] || '').length || 0, minMove: cfg(P).tick } }); $('#fRisk').value = S.risk; $('#fR').value = S.rr; syncControls(); renderAllPanes(true); renderLive(); renderStats(); queueSave(0); }
+    renderSessSel(); toast('ההגדרות נשמרו'); return;
+  }
+  const [y, mo, d] = ($('#sDate').value || '').split('-').map(Number), [hh, mi] = ($('#sTime').value || '16:00').split(':').map(Number);
+  const extra = { ...vals, panes: pz };
+  if (y && mo && d) extra.now = localToUTC(IL, y, mo - 1, d, hh || 0, mi || 0);
+  $('#dlgSess').close();
+  await createSession(null, null, extra); toast('הסשן נוצר');
+}
+async function deleteSession() {
+  const b = $('#bSessDel');
+  if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'בטוח? הסשן והעסקאות יימחקו'; return; }
+  const id = S.id; $('#dlgSess').close(); setPlay(false); clearTimeout(saveTimer); saveTimer = null;
+  if (db) { try { const snap = await tradeCol(id).get(); for (const d of snap.docs) await tradeCol(id).doc(d.id).delete(); await sessCol().doc(id).delete(); } catch (e) { toast('המחיקה נכשלה'); return; } sessions = sessions.filter(x => x.id !== id); }
+  else memSessions = memSessions.filter(x => x.id !== id);
+  const next = (db ? sessions : memSessions)[0];
+  if (next) await loadSession(next);
+  else { S = null; for (const P of panes) { P.D = null; P.cur = -1; P.series.setData([]); P.series.setMarkers([]); setLegend(P); paneEmpty(P, ''); } renderSessSel(); showWelcome(); }
+  toast('הסשן נמחק');
+}
+function openData() { renderDataList(); $('#impMsg').textContent = ''; $('#dlgData').showModal(); }
+function renderDataList() {
+  const list = allDs();
+  $('#dsList').innerHTML = list.length ? list.map(d => `<div class="ds"><div><b>${esc(d.name)}</b><div class="meta">${esc(d.symbol)} · ${(d.res || [d.base]).map(tfLabel).join(' + ')} · ${(d.bars || 0).toLocaleString('en-US')} נרות · <span class="num">${fmtDateInput(d.firstT)} – ${fmtDateInput(d.lastT)}</span>${d.local ? ' · לא נשמר' : ''}</div></div><button class="btn small danger" type="button" data-del="${esc(d.id)}">מחק</button></div>`).join('') : '<p class="muted" style="margin:0">עוד אין נתונים. ייבא קבצי CSV מ-TradingView.</p>';
+}
+async function importFiles(files, say) {
+  if (!files.length) { say('בחר קובץ CSV אחד או יותר.', 'err'); return []; }
+  const items = []; for (const f of files) items.push({ name: f.name, text: await f.text() });
+  return importTexts(items, say);
+}
+function splitPasted(text) {
+  const out = []; let cur = null;
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(/^@([A-Za-z0-9!_:=+]+)\s*$/);
+    if (m) { cur = { name: m[1], lines: [] }; out.push(cur); continue; }
+    if (!cur) { cur = { name: '', lines: [] }; out.push(cur); }
+    cur.lines.push(line);
+  }
+  return out.filter(x => x.lines.some(l => l.trim())).map(x => ({ name: x.name, text: x.lines.join('\n') }));
+}
+async function importTexts(items, say) {
+  const groups = new Map(), fallback = $('#impSym').value, tz = $('#impTZ').value;
+  for (const f of items) {
+    if (/:trim=\d+$/.test(f.name || '')) { groups.set((detectSym(f.name.split(':')[0]) || fallback) + ':' + f.name.split(':')[1], []); continue; }
+    const rows = parseAny(await maybeGz(f.text), tz);
+    if (rows.length < 20) throw new Error(`ב${f.name ? 'קובץ ' + f.name : 'טקסט שהודבק'} לא זיהיתי מספיק נרות.`);
+    const fb = detectBase(Float64Array.from(rows.map(r => r[0]).sort((a, b) => a - b))); for (const r of rows) if (!(r[5] > 0)) r[5] = fb;
+    const [nm, tag] = String(f.name || '').split(':'), sym = (detectSym(nm) || fallback) + (tag ? ':' + tag : '');
+    if (!groups.has(sym)) groups.set(sym, []); const g = groups.get(sym); for (const r of rows) g.push(r);
+  }
+  const done = [];
+  for (const [gk, rows0] of groups) {
+    const [sym, tag] = gk.split(':'); let rows = rows0;
+    if (tag) { done.push(await importPart(sym, tag, rows, say)); continue; }
+    const merge = $('#impMerge').checked ? allDs().filter(d => d.symbol === sym).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0] : null;
+    if (merge) { try { const old = merge.local ? dataCache.get(merge.id) : await loadData(merge); if (old) for (let i = 0; i < old.n; i++) rows.push([old.t[i], old.o[i], old.h[i], old.l[i], old.c[i], old.r[i]]); } catch (e) {} }
+    const id = merge ? merge.id : 'd' + uid();
+    const d = makeData({ id, symbol: sym }, rows);
+    const resLbl = d.ress.map(tfLabel).join(' + '); const meta = { name: `${sym} · ${resLbl}`, symbol: sym, base: d.base, res: d.ress, firstT: d.t[0], lastT: d.t[d.n - 1], bars: d.n, createdAt: merge ? merge.createdAt : Date.now(), updatedAt: Date.now() };
+    if (merge && (merge.parts || []).length) {
+      const ps = merge.parts, res = new Set([...d.ress, ...ps.flatMap(x => x.res || [60])]);
+      Object.assign(meta, { parts: ps, mainFirstT: d.t[0], mainLastT: d.t[d.n - 1], mainBars: d.n, mainRes: d.ress, firstT: Math.min(d.t[0], ...ps.map(x => x.firstT)), lastT: Math.max(d.t[d.n - 1], ...ps.map(x => x.lastT)), bars: d.n + ps.reduce((a, x) => a + (x.bars || 0), 0) });
+      meta.res = [...res].sort((a, b) => a - b); meta.name = `${sym} · ${meta.res.map(tfLabel).join(' + ')}`;
+    }
+    if (assets && db) {
+      say(`דוחס את ${sym}…`); const blob = new Blob([await gzEncode(toCompact(d))], { type: 'text/plain' });
+      if (blob.size > 19.5 * 1024 * 1024) throw new Error(`הנתונים של ${sym} גדולים מדי לשמירה (מעל 20MB). ייבא טווח קצר יותר.`);
+      say(`מעלה את ${sym}…`);
+      const up = await assets.upload(blob, { type: 'text/plain' }); meta.assetId = up.id;
+      await dsCol().doc(id).set(meta);
+      if (merge && merge.assetId && merge.assetId !== up.id) { try { await assets.delete(merge.assetId); } catch (e) {} }
+      const i = datasets.findIndex(x => x.id === id); if (i >= 0) datasets[i] = { id, ...meta }; else datasets.push({ id, ...meta });
+    } else {
+      meta.local = true; const i = localDs.findIndex(x => x.id === id); if (i >= 0) localDs[i] = { id, ...meta }; else localDs.push({ id, ...meta });
+    }
+    d.meta = { id, ...meta }; dataCache.set(id, d); done.push({ id, ...meta });
+  }
+  say(done.map(m => `${m.symbol}: ${m.bars.toLocaleString('en-US')} נרות (${(m.res || [m.base]).map(tfLabel).join(' + ')}), ${fmtDateInput(m.firstT)} עד ${fmtDateInput(m.lastT)}`).join(' · ') + (done.some(m => m.local) ? ' · נשמר רק עד רענון הדף' : ''), 'ok');
+  return done;
+}
+/* yearly part or trim of the main file, for datasets that hold many years */
+async function importPart(sym, tag, rows, say) {
+  const meta = allDs().filter(d => d.symbol === sym).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+  if (!meta || !assets || !db) throw new Error(`אין נתונים קיימים של ${sym} לחבר אליהם את ${tag}.`);
+  const m = { ...meta, parts: (meta.parts || []).map(x => ({ ...x })) };
+  if (tag.startsWith('trim=')) {
+    const cut = +tag.slice(5), old = await loadData(meta), keep = [], pre = [], p0 = Math.min(Infinity, ...m.parts.filter(x => x.key !== 'pre').map(x => x.firstT));
+    for (let i = 0; i < old.n; i++) { const row = [old.t[i], old.o[i], old.h[i], old.l[i], old.c[i], old.r[i]]; if (old.t[i] >= cut) keep.push(row); else if (old.t[i] < p0) pre.push(row); }
+    if (pre.length > 20) {
+      const dp = makeData({ id: meta.id, symbol: sym }, pre), upP = await assets.upload(new Blob([await gzEncode(toCompact(dp))], { type: 'text/plain' }), { type: 'text/plain' });
+      const oldP = m.parts.find(x => x.key === 'pre'); if (oldP) { try { await assets.delete(oldP.assetId); } catch (e) {} }
+      m.parts = m.parts.filter(x => x.key !== 'pre').concat([{ key: 'pre', assetId: upP.id, firstT: dp.t[0], lastT: dp.t[dp.n - 1], bars: dp.n, res: dp.ress }]).sort((a, b) => a.firstT - b.firstT);
+    }
+    const d = makeData({ id: meta.id, symbol: sym }, keep); say(`מקצר את ${sym}…`);
+    const up = await assets.upload(new Blob([await gzEncode(toCompact(d))], { type: 'text/plain' }), { type: 'text/plain' });
+    if (meta.assetId) { try { await assets.delete(meta.assetId); } catch (e) {} }
+    m.assetId = up.id; m.mainFirstT = d.t[0]; m.mainLastT = d.t[d.n - 1]; m.mainBars = d.n; m.mainRes = d.ress;
+    dataCache.delete(meta.id); srcCache.delete(meta.assetId);
+  } else {
+    /* "2023+" adds the rows to the existing 2023 part (finer bars win where both exist) */
+    const add = tag.endsWith('+'), key = add ? tag.slice(0, -1) : tag, old = m.parts.find(x => x.key === key);
+    if (add && old) { const od = await loadSrc(meta, old); for (let i = 0; i < od.n; i++) rows.push([od.t[i], od.o[i], od.h[i], od.l[i], od.c[i], od.r[i]]); }
+    const d = makeData({ id: meta.id, symbol: sym }, rows); say(`דוחס את ${sym} ${key}…`);
+    const up = await assets.upload(new Blob([await gzEncode(toCompact(d))], { type: 'text/plain' }), { type: 'text/plain' });
+    if (old) { try { await assets.delete(old.assetId); } catch (e) {} srcCache.delete(old.assetId); }
+    m.parts = m.parts.filter(x => x.key !== key).concat([{ key, assetId: up.id, firstT: d.t[0], lastT: d.t[d.n - 1], bars: d.n, res: d.ress }]).sort((a, b) => a.firstT - b.firstT);
+  }
+  if (m.mainFirstT == null) { m.mainFirstT = meta.firstT; m.mainLastT = meta.lastT; m.mainBars = meta.bars; m.mainRes = meta.res; }
+  const fr = fullRange(m), res = new Set([...(m.mainRes || []), ...m.parts.flatMap(x => x.res || [60])]);
+  Object.assign(m, { firstT: fr[0], lastT: fr[1], bars: (m.mainBars || 0) + m.parts.reduce((a, x) => a + (x.bars || 0), 0), res: [...res].sort((a, b) => a - b), updatedAt: Date.now() });
+  m.name = `${sym} · ${m.res.map(tfLabel).join(' + ')}`;
+  const { id, ...body } = m; await dsCol().doc(id).set(body);
+  const i = datasets.findIndex(x => x.id === id); if (i >= 0) datasets[i] = m; else datasets.push(m);
+  return m;
+}
+async function afterImport(done) {
+  renderDataList();
+  if (!done.length) return;
+  if (!S) { const [l, r] = bestPair(); if (l) { await createSession(l, r, { name: 'סשן 1' }); toast('נוצר סשן עם הנתונים'); } return; }
+  const ids = done.map(m => m.id);
+  let touched = false;
+  for (const P of panes) if (P.D && ids.includes(P.D.id)) { const nm = dsMeta(P.D.id); P.D = (nm && (nm.parts || []).length) ? await loadWindow(nm, now) : dataCache.get(P.D.id); P.AG = new Map(); P.sessCache = null; P.fvgCache = null; P.fvgAll = null; P.segs = null; P.cur = cursorAt(P.D, now); touched = true; }
+  if (touched) { syncControls(); renderAllPanes(true); renderLive(); }
+}
+async function deleteDataset(btn) {
+  const id = btn.dataset.del;
+  if (!btn.dataset.armed) { btn.dataset.armed = '1'; btn.textContent = 'בטוח? מחק'; return; }
+  const meta = allDs().find(x => x.id === id); if (!meta) return;
+  if (S && S.panes.some(p => p.ds === id)) { toast('הנתונים פתוחים בסשן הנוכחי. עבור לסשן אחר לפני המחיקה.'); return; }
+  try { if (db && !meta.local) { await dsCol().doc(id).delete(); if (assets && meta.assetId) await assets.delete(meta.assetId); if (assets) for (const x of meta.parts || []) { try { await assets.delete(x.assetId); } catch (e) {} } } datasets = datasets.filter(x => x.id !== id); localDs = localDs.filter(x => x.id !== id); dataCache.delete(id); renderDataList(); toast('הנתונים נמחקו'); if (!S) showWelcome(); }
+  catch (e) { toast('המחיקה נכשלה'); }
+}
+
+/* ---------- chart interaction ---------- */
+const MAG_PX = 14;   /* weak magnet: snap only when the cursor is within this many pixels of a candle's O/H/L/C */
+function snapP(P, A, idx, raw) {
+  if (!S || S.magnet === false || idx < 0 || idx > P.disp.last) return roundTick(P, raw);
+  const k = idx === P.disp.last ? candleAt(P, A, idx, P.cur) : { o: A.O[idx], h: A.H[idx], l: A.L[idx], c: A.C[idx] };
+  const y0 = P.series.priceToCoordinate(raw); if (y0 == null) return roundTick(P, raw);
+  let best = null, bd = Infinity;
+  for (const v of [k.h, k.l, k.o, k.c]) { const y = P.series.priceToCoordinate(v); if (y == null) continue; const dd = Math.abs(y - y0); if (dd < bd) { bd = dd; best = v; } }
+  return best != null && bd <= MAG_PX ? best : roundTick(P, raw);
+}
+function pointAt(P, logical, raw) { const A = agg(P, curTF(P)), idx = Math.max(0, P.disp.start + Math.round(logical)); return { t: idxToT(A, idx), p: snapP(P, A, idx, raw) }; }
+function setPick(field) { pickField = pickField === field ? null : field; $$('.pick').forEach(b => b.classList.toggle('on', b.dataset.pick === pickField)); for (const P of panes) P.el.classList.toggle('picking', !!pickField); refreshBanner(); }
+function setTool(t) { tool = t; drawStart = null; drawHover = null; if (t !== 'none') sel = null; renderSelBar(); $$('#tools button[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); for (const P of panes) { P.el.classList.toggle('drawing', t !== 'none'); setHover(P, null); P.prim.req(); } refreshBanner(); }
+function onChartClick(P, p) {
+  if (!S || !P.D || P.cur < 0 || !p.point) return;
+  const raw = P.series.coordinateToPrice(p.point.y); if (raw == null) return;
+  if (pickField) {
+    const f = pickField; if (P.i !== S.active) setActive(P.i);
+    $('#' + f).value = roundTick(P, raw).toFixed(2); if (f === 'fTP') TK.tpManual = true; setPick(null); renderTicket(); return;
+  }
+  const shift = !!(p.sourceEvent && p.sourceEvent.shiftKey);
+  shiftDown = shift;
+  if (p.logical != null && (tool === 'measure' || (shift && tool === 'none' && !drawStart) || (meas && !meas.done && meas.pane === P.i))) {
+    const idx = Math.max(0, P.disp.start + Math.round(p.logical)), pr = snapP(P, agg(P, curTF(P)), idx, raw);
+    if (!meas || meas.done || meas.pane !== P.i) { const old = meas; meas = { pane: P.i, i1: idx, p1: pr, i2: idx, p2: pr, done: false }; if (old && old.pane !== P.i) panes[old.pane].prim.req(); }
+    else { meas.i2 = idx; meas.p2 = pr; meas.done = true; if (tool === 'measure') setTool('none'); }
+    P.prim.req(); refreshBanner(); return;
+  }
+  if (meas && meas.done) { const q = meas.pane; meas = null; panes[q].prim.req(); if (tool === 'none') return; }
+  if (tool === 'none') { deselect(); return; }
+  if (p.logical == null) return;
+  const pt = pointAt(P, p.logical, raw);
+  if (tool === 'hline') addDrawing(P, { type: 'h', p: pt.p });
+  else if (tool === 'hray') addDrawing(P, { type: 'hray', t1: pt.t, p1: pt.p });
+  else if (tool === 'vline') addDrawing(P, { type: 'v', t1: pt.t });
+  else if (TWO_PT[tool]) {
+    if (!drawStart || drawStart.pane !== P.i) { drawStart = { pane: P.i, tool, t: pt.t, p: pt.p }; drawHover = null; refreshBanner(); }
+    else { const d = buildTwo(P, drawStart, pt, false); drawStart = null; drawHover = null; if (d) addDrawing(P, d); else refreshBanner(); }
+  } else if (tool === 'erase') { const h = hitTest(P, p.point.x, p.point.y); if (h) removeDrawing(P, h.idx); }
+}
+
+/* ---------- export ---------- */
+async function exportCSV() {
+  if (!S) return;
+  const list = sortedTrades(); if (!list.length) { toast('אין עסקאות לייצוא'); return; }
+  const tz = S.tz, q = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const head = ['#', 'סימול', 'כניסה', 'יציאה', 'צד', 'כמות', 'מחיר כניסה', 'סטופ', 'יעד', 'מחיר יציאה', 'סיבה', 'נקודות', 'R', 'רווח/הפסד $', 'עמלות $', 'MFE נק׳', 'MAE נק׳', 'סטאפ', 'הערה'];
+  const rows = list.map(t => [t.n, t.sym, fmtDT(tz, t.tIn, false), fmtDT(tz, t.tOut, false), t.side === 1 ? 'לונג' : 'שורט', t.qty, t.entry, t.sl, t.tp ?? '', t.exit, t.why, t.pts.toFixed(2), t.r.toFixed(2), t.pnl.toFixed(2), t.fees.toFixed(2), (t.mfe || 0).toFixed(2), (t.mae || 0).toFixed(2), t.tag, t.note].map(q).join(','));
+  const csv = '﻿' + [head.join(','), ...rows].join('\n'), fname = `backtest-${(S.name || 'session').replace(/[^\w֐-׿-]+/g, '_')}.csv`;
+  if (downloads) { try { await downloads.save({ filename: fname, data: csv }); return; } catch (e) { if (e && e.code === 'declined') return; } }
+  try { await navigator.clipboard.writeText(csv); toast('ההורדה לא זמינה כאן. הטבלה הועתקה, אפשר להדביק באקסל.'); } catch (e) { toast('הייצוא לא זמין בתצוגה הזו'); }
+}
+
+/* ---------- bind UI ---------- */
+function bindUI() {
+  $('#bNext').onclick = () => step(1);
+  $('#bBack').onclick = back;
+  $('#bCandle').onclick = candleStep;
+  $('#bPlay').onclick = () => setPlay(!playing);
+  $('#speed').onchange = () => { if (playing) setPlay(true); };
+  $('#bNextWin').onclick = async () => { if (!S) return; const t = await findNext(() => nextWindowNow()); if (!isFinite(t)) toast('אין עוד חלון מסחר בנתונים'); else jumpNow(t); };
+  $('#bNextDay').onclick = async () => { if (!S) return; const t = await findNext(() => nextDayNow()); if (!isFinite(t)) toast('זה היום האחרון בנתונים'); else jumpNow(t); };
+  $('#bJump').onclick = () => { if (!S) return; const [y, mo, d] = ($('#jDate').value || '').split('-').map(Number), [hh, mi] = ($('#jTime').value || '00:00').split(':').map(Number); if (!y) { toast('בחר תאריך'); return; } jumpNow(localToUTC(S.tz, y, mo - 1, d, hh || 0, mi || 0)); };
+  $('#tfs').onclick = e => { const b = e.target.closest('button[data-tf]'); if (!b || b.disabled || !S) return; S.tf = +b.dataset.tf; meas = null; syncControls(); renderAllPanes(false); renderLive(); queueSave(); };
+  $('#tools').onclick = e => { const b = e.target.closest('button[data-tool]'); if (b) setTool(b.dataset.tool); };
+  $('#bUndo').onclick = () => { if (!S) return; const P = act(), list = S.draw[P.i]; if (!list.length) return; const d = list.pop(); sel = null; renderSelBar(); setHover(P, null); if (d.type === 'h') syncHLines(P); P.prim.req(); queueSave(); };
+  $('#bClearDraw').onclick = () => {
+    if (!S) return; const P = act(), list = S.draw[P.i], btn = $('#bClearDraw');
+    if (!list.length) { toast('אין ציורים בגרף הזה'); return; }
+    if (Date.now() - clearArm > 3000) { clearArm = Date.now(); btn.classList.add('arm'); toast(`לחץ שוב כדי למחוק את כל ${list.length} הציורים ב-${cfg(P).sym}`); setTimeout(() => btn.classList.remove('arm'), 3000); return; }
+    clearArm = 0; btn.classList.remove('arm'); S.draw[P.i] = []; sel = null; renderSelBar(); setHover(P, null); syncHLines(P); P.prim.req(); queueSave(); toast('כל הציורים בגרף נמחקו');
+  };
+  $$('.selbar').forEach(bar => bar.addEventListener('click', e => {
+    const a = e.target.closest('[data-sa]'); if (!a || !sel || !S) return;
+    const P = panes[sel.pane], d = S.draw[P.i][sel.idx]; if (!d) return;
+    if (a.dataset.sa === 'del') removeDrawing(P, sel.idx);
+    else if (a.dataset.sa === 'flip') { const dist = Math.abs(d.e - d.sl), rew = Math.abs(d.tp - d.e); d.side = -d.side; d.sl = roundTick(P, d.e - d.side * dist); d.tp = roundTick(P, d.e + d.side * rew); renderSelBar(); P.prim.req(); queueSave(); }
+    else if (a.dataset.sa === 'ticket') posToTicket(P, d);
+    else if (a.dataset.sa === 'fib') openFib();
+    else if (a.dataset.sa === 'color') { if (a.dataset.c === DRAW_COL) delete d.c; else d.c = a.dataset.c; rememberCol(d); if (d.type === 'h') syncHLines(P); renderSelBar(); P.prim.req(); queueSave(); }
+  }));
+  /* native colour picker: live preview while dragging, saved on change */
+  const pickCol = (e, done) => {
+    const inp = e.target.closest('input[type=color][data-k]'); if (!inp || !sel || !S) return;
+    const P = panes[sel.pane], d = S.draw[P.i][sel.idx]; if (!d) return;
+    d[inp.dataset.k] = inp.value.toUpperCase(); if (d.type === 'h') syncHLines(P); P.prim.req();
+    if (done) { rememberCol(d); renderSelBar(); queueSave(); }
+  };
+  $$('.selbar').forEach(bar => { bar.addEventListener('input', e => pickCol(e, false)); bar.addEventListener('change', e => pickCol(e, true)); });
+  $('#bMagnet').onclick = () => { if (!S) return; S.magnet = S.magnet === false; syncMagnet(); queueSave(); toast(S.magnet ? 'מגנט חלש פועל' : 'המגנט כבוי'); };
+  const fillFib = F => { $('#fbLv').value = F.levels.join(', '); $('#fbExt').checked = !!F.ext; $('#fbFill').checked = !!F.fill; $('#fbPx').checked = !!F.px; };
+  const openFib = () => { if (!S) return; fillFib(S.fib || FIB_DEF); $('#dlgFib').showModal(); };
+  $('#bFibReset').onclick = () => fillFib(FIB_DEF);
+  $('#fFib').addEventListener('submit', e => {
+    e.preventDefault(); if (!S) return;
+    const lv = $('#fbLv').value.split(/[,;\s]+/).map(num).filter(v => isFinite(v));
+    if (!lv.length) { toast('הזן לפחות רמה אחת'); return; }
+    S.fib = { levels: [...new Set(lv)], ext: $('#fbExt').checked, fill: $('#fbFill').checked, px: $('#fbPx').checked };
+    $('#dlgFib').close(); for (const P of panes) P.prim.req(); queueSave(0);
+  });
+  $('#syncOn').onchange = e => { if (!S) return; S.sync = e.target.checked; queueSave(); };
+  const redrawInd = () => { for (const P of panes) { P.fvgCache = null; P.fvgAll = null; P.segs = null; P.sessCache = null; P.prim.req(); } };
+  $('#qSess').onchange = e => { if (!S) return; S.ind.sess.on = e.target.checked; redrawInd(); queueSave(); };
+  $('#qFvg').onchange = e => { if (!S) return; S.ind.fvg.on = e.target.checked; redrawInd(); queueSave(); };
+  const fillInd = ind => {
+    $('#iSessOn').checked = ind.sess.on; $('#iSessLines').checked = ind.sess.lines;
+    $('#iSessList').innerHTML = ind.sess.list.map((d, k) => `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><label class="check" style="min-width:120px"><input type="checkbox" data-sk="${k}" ${d.on ? 'checked' : ''}><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${d.color}"></span>${esc(d.name)}</label><input type="time" data-sf="${k}" value="${d.from}" aria-label="${esc(d.name)} מ-"><span class="muted">עד</span><input type="time" data-st="${k}" value="${d.to}" aria-label="${esc(d.name)} עד"></div>`).join('');
+    $('#iFvgOn').checked = ind.fvg.on; $('#iFvgSrc').value = String(ind.fvg.src || 0); $('#iFvgMax').value = ind.fvg.max; $('#iFvgMin').value = ind.fvg.min; $('#iFvgInv').checked = ind.fvg.ifvg;
+  };
+  $('#bInd').onclick = () => { if (!S) return; fillInd(S.ind); $('#dlgInd').showModal(); };
+  $('#bIndReset').onclick = () => fillInd(defInd());
+  $('#fInd').addEventListener('submit', e => {
+    e.preventDefault(); if (!S) return;
+    const list = SESS_DEF.map((d, k) => ({ ...d, on: $(`[data-sk="${k}"]`).checked, from: $(`[data-sf="${k}"]`).value || d.from, to: $(`[data-st="${k}"]`).value || d.to }));
+    S.ind = { sess: { on: $('#iSessOn').checked, lines: $('#iSessLines').checked, list }, fvg: { on: $('#iFvgOn').checked, src: +$('#iFvgSrc').value, max: Math.max(1, Math.floor(num($('#iFvgMax').value) || 8)), min: Math.max(0, num($('#iFvgMin').value) || 0), ifvg: $('#iFvgInv').checked } };
+    $('#dlgInd').close(); syncControls(); redrawInd(); queueSave(0);
+  });
+  $('#tzSeg').onclick = e => { const b = e.target.closest('button[data-tz]'); if (!b || !S) return; S.tz = b.dataset.tz; syncControls(); renderAllPanes(true); renderLive(); renderTrades(); queueSave(); };
+  $('#otype').onclick = e => { const b = e.target.closest('button[data-t]'); if (!b) return; TK.type = b.dataset.t; $$('#otype button').forEach(x => x.classList.toggle('on', x === b)); $('#rowEntry').hidden = TK.type === 'mkt'; if (TK.type !== 'mkt' && !$('#fEntry').value && S && act().cur >= 0) $('#fEntry').value = lastPx(act()).toFixed(2); renderTicket(); };
+  ['fEntry', 'fSL', 'fRisk', 'fTag'].forEach(id => $('#' + id).addEventListener('input', renderTicket));
+  $('#fR').addEventListener('input', () => { TK.tpManual = false; renderTicket(); });
+  $('#fTP').addEventListener('input', () => { TK.tpManual = $('#fTP').value.trim() !== ''; renderTicket(); });
+  $$('.pick').forEach(b => b.onclick = () => setPick(b.dataset.pick));
+  $('#bBuy').onclick = () => placeOrder(1);
+  $('#bSell').onclick = () => placeOrder(-1);
+  $('#ticket').addEventListener('click', e => { if (e.target.id !== 'bBlkNext') return; (async () => { const d = await findNext(() => nextDayNow()); if (!isFinite(d)) { toast('זה היום האחרון בנתונים'); return; } const w = nextWindowNow(d); jumpNow(isFinite(w) ? w : d); })(); });
+  $('#bPosUpd').onclick = () => {
+    const X = S && S.pos; if (!X) return; const P = panes[X.pane], sl = num($('#pSL').value), tp = num($('#pTP').value), px = lastPx(P);
+    if (!isFinite(sl) || (X.side === 1 ? sl >= px : sl <= px)) { toast('הסטופ חייב להיות בצד השני של המחיר הנוכחי'); return; }
+    if (isFinite(tp) && (X.side === 1 ? tp <= px : tp >= px)) { toast('היעד חייב להיות מעבר למחיר הנוכחי'); return; }
+    X.sl = roundTick(P, sl); X.tp = isFinite(tp) ? roundTick(P, tp) : null; P.posKey = ''; syncPosLines(P); renderPos(); queueSave(0); toast('הסטופ והיעד עודכנו');
+  };
+  $('#bBE').onclick = () => { const X = S && S.pos; if (!X) return; const P = panes[X.pane], px = lastPx(P); if (X.side === 1 ? X.entry >= px : X.entry <= px) { toast('המחיר עוד לא מעבר לכניסה'); return; } X.sl = X.entry; P.posKey = ''; syncPosLines(P); renderPos(); queueSave(0); toast('הסטופ הוזז לכניסה'); };
+  $('#bClose').onclick = () => { const X = S && S.pos; if (X) { const P = panes[X.pane]; closePos(lastPx(P), 'ידני', P.D.t[P.cur]); } };
+  $('#bCancel').onclick = () => { if (!S || !S.pend) return; S.pend = null; for (const Q of panes) { Q.posKey = ''; syncPosLines(Q); } renderPos(); renderTicket(); queueSave(0); toast('הפקודה בוטלה'); };
+  $('#tBody').addEventListener('change', async e => { const id = e.target.dataset && e.target.dataset.note; if (!id) return; const tr = trades.get(id); if (!tr) return; tr.note = e.target.value; if (db) { try { await tradeCol(S.id).doc(id).update({ note: tr.note }); } catch (err) { toast('שמירת ההערה נכשלה'); } } });
+  $('#tBody').addEventListener('click', e => {
+    if (e.target.tagName === 'INPUT') return; const row = e.target.closest('tr[data-id]'); if (!row) return; const tr = trades.get(row.dataset.id); if (!tr) return;
+    const P = panes[tr.pane]; if (!P || !P.D || P.disp.last < 0) return; const A = agg(P, curTF(P)), i = lowerBound(P.D.t, tr.tIn); if (i >= P.D.n) return;
+    const bi = A.b2[i] - P.disp.start; if (bi < 0) { toast('העסקה מחוץ לטווח שמוצג בגרף'); return; }
+    P.chart.timeScale().setVisibleLogicalRange({ from: bi - 60, to: bi + 60 });
+  });
+  $$('.tabs button').forEach(b => b.onclick = () => { $$('.tabs button').forEach(x => x.classList.toggle('on', x === b)); $('#tabTrade').hidden = b.dataset.tab !== 'trade'; $('#tabLog').hidden = b.dataset.tab !== 'log'; $('#dock').classList.remove('collapsed'); $('#bDock').textContent = 'הסתר פאנל'; });
+  $('#bDock').onclick = () => { const c = $('#dock').classList.toggle('collapsed'); $('#bDock').textContent = c ? 'הצג פאנל' : 'הסתר פאנל'; };
+  $('#bExport').onclick = exportCSV;
+  $('#bBig').onclick = () => setBig();
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && $('#app').classList.contains('big')) setBig(false); });
+  $('#bigPos').addEventListener('click', e => { if (e.target.id === 'bBigClose') $('#bClose').click(); });
+  $$('.pmax').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); if (!S) return; const i = +b.closest('.pane').dataset.p; S.ui = S.ui || {}; S.ui.max = S.ui.max === i ? null : i; if (S.ui.max != null) setActive(S.ui.max); applyLayout(); queueSave(); }));
+  $$('.pfit').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); const P = panes[+b.closest('.pane').dataset.p]; if (!P.chart) return; P.series.priceScale().applyOptions({ autoScale: true }); P.chart.timeScale().scrollToRealTime(); }));
+  const vs = $('#vsplit');
+  vs.addEventListener('pointerdown', e => {
+    if (!S) return; e.preventDefault(); vs.setPointerCapture(e.pointerId); vs.classList.add('drag');
+    const rect = $('#charts').getBoundingClientRect();
+    const move = ev => { S.ui = S.ui || {}; S.ui.split = clamp((ev.clientX - rect.left) / rect.width, 0.15, 0.85); applyLayout(); };
+    const up = () => { vs.classList.remove('drag'); vs.removeEventListener('pointermove', move); vs.removeEventListener('pointerup', up); queueSave(); };
+    vs.addEventListener('pointermove', move); vs.addEventListener('pointerup', up);
+  });
+  vs.addEventListener('dblclick', () => { if (!S) return; S.ui = S.ui || {}; S.ui.split = 0.5; applyLayout(); queueSave(); });
+  const dg = $('#dockGrip');
+  dg.addEventListener('pointerdown', e => {
+    if (!S) return; e.preventDefault(); dg.setPointerCapture(e.pointerId); dg.classList.add('drag');
+    const startY = e.clientY, startH = $('.dock-b').getBoundingClientRect().height;
+    if ($('#dock').classList.contains('collapsed')) { $('#dock').classList.remove('collapsed'); $('#bDock').textContent = 'הסתר פאנל'; }
+    const move = ev => { S.ui = S.ui || {}; S.ui.dockH = clamp(startH + (startY - ev.clientY), 110, 520); applyLayout(); };
+    const up = () => { dg.classList.remove('drag'); dg.removeEventListener('pointermove', move); dg.removeEventListener('pointerup', up); queueSave(); };
+    dg.addEventListener('pointermove', move); dg.addEventListener('pointerup', up);
+  });
+  $('#sessSel').onchange = e => { const sd = (db ? sessions : memSessions).find(x => x.id === e.target.value); if (sd && (!S || sd.id !== S.id)) loadSession(sd); };
+  $('#bSessNew').onclick = () => openSessDlg(false);
+  $('#bSessEdit').onclick = () => openSessDlg(!!S);
+  $('#bData').onclick = openData;
+  $('#fSess').addEventListener('submit', saveSessDlg);
+  $('#bSessDel').onclick = deleteSession;
+  $('#sDs0').onchange = () => { const m = dsMeta($('#sDs0').value); if (m) setPaneFields(0, paneCfgFromDs(m)); setDefaultStart(); };
+  $('#sDs1').onchange = () => { const m = dsMeta($('#sDs1').value); if (m) setPaneFields(1, paneCfgFromDs(m)); setDefaultStart(); };
+  [0, 1].forEach(i => $('#sIn' + i).onchange = e => { const p = INSTR[e.target.value]; $('#sCus' + i).hidden = !!p; if (p) { $('#sMax' + i).value = p.max; $('#sPV' + i).value = p.pv; $('#sTk' + i).value = p.tick; } });
+  $$('[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
+  $('#bImport').onclick = async () => {
+    const msg = $('#impMsg'), say = (t, c = '') => { msg.textContent = t; msg.className = 'msg ' + c; };
+    $('#bImport').disabled = true; say('קורא את הקבצים…');
+    try { const done = await importFiles([...($('#impFile').files || [])], say); $('#impFile').value = ''; await afterImport(done); }
+    catch (e) { say(e && e.message ? e.message : 'הייבוא נכשל.', 'err'); console.warn(e); }
+    $('#bImport').disabled = false;
+  };
+  $('#welcome').addEventListener('click', e => { if (e.target.id === 'wPick') $('#wFile').click(); if (e.target.id === 'wNew') openSessDlg(false); });
+  $('#wFile').onchange = async () => {
+    const say = (t, c = '') => { $('#wMsg').textContent = t; $('#wMsg').className = 'msg ' + c; };
+    say('קורא את הקבצים…');
+    try { const done = await importFiles([...($('#wFile').files || [])], say); $('#wFile').value = ''; await afterImport(done); if (!S) showWelcome(); }
+    catch (e) { say(e && e.message ? e.message : 'הייבוא נכשל.', 'err'); }
+  };
+  const onPaste = (box, sayEl) => async e => {
+    e.preventDefault();
+    const text = (e.clipboardData && e.clipboardData.getData('text/plain')) || '';
+    const say = (t, c = '') => { sayEl.textContent = t; sayEl.className = 'msg ' + c; };
+    if (!text.trim()) { say('לא היה טקסט בהדבקה.', 'err'); return; }
+    say('קורא את הנתונים…'); box.disabled = true;
+    try { const done = await importTexts(splitPasted(text), say); await afterImport(done); if (!S) showWelcome(); }
+    catch (err) { say(err && err.message ? err.message : 'הייבוא נכשל.', 'err'); }
+    box.disabled = false; box.value = '';
+  };
+  $('#wPaste').addEventListener('paste', onPaste($('#wPaste'), $('#wMsg')));
+  $('#impPaste').addEventListener('paste', onPaste($('#impPaste'), $('#impMsg')));
+  $('#charts').addEventListener('click', e => { if (e.target.closest('[data-open-settings]')) openSessDlg(true); });
+  $('#dsList').addEventListener('click', e => { const b = e.target.closest('button[data-del]'); if (b) deleteDataset(b); });
+  const setShift = v => { if (shiftDown === v) return; shiftDown = v; for (const P of panes) P.prim.req(); };
+  document.addEventListener('keydown', e => { if (e.key === 'Shift') setShift(true); }, true);
+  document.addEventListener('keyup', e => { if (e.key === 'Shift') setShift(false); }, true);
+  window.addEventListener('blur', () => setShift(false));
+  document.addEventListener('keydown', e => {
+    if (!S || (e.target.closest && e.target.closest('input,select,textarea,dialog'))) return;
+    if (e.key === 'ArrowRight') { e.preventDefault(); e.shiftKey ? candleStep() : step(1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); back(); }
+    else if (e.key === ' ') { e.preventDefault(); setPlay(!playing); }
+    else if (e.key === 'Escape') cancelTools();
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); removeDrawing(panes[sel.pane], sel.idx); }
+    else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); $('#bUndo').click(); }
+    else if (e.altKey && !e.ctrlKey && !e.metaKey && { KeyT: 1, KeyH: 1, KeyV: 1, KeyF: 1, KeyR: 1 }[e.code]) { e.preventDefault(); setTool({ KeyT: 'line', KeyH: 'hline', KeyV: 'vline', KeyF: 'fib', KeyR: 'rect' }[e.code]); }
+    else if ((e.key === 'f' || e.key === 'F' || e.key === 'כ') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); setBig(); }
+    else if (e.key === 'Enter' && e.altKey) { e.preventDefault(); S.ui = S.ui || {}; S.ui.max = S.ui.max === S.active ? null : S.active; applyLayout(); queueSave(); }
+  });
+}
+
+/* ---------- capabilities ---------- */
+async function connect() {
+  const cl = window.claude;
+  if (!cl || typeof cl.use !== 'function') { setSave('warn', 'תצוגה מקומית · לא נשמר'); showWelcome(); return; }
+  const [d, a, dl] = await Promise.all(['db', 'assets', 'downloads'].map(n => cl.use(n).catch(() => null)));
+  db = d; assets = a; downloads = dl;
+  if (!db) { setSave('warn', 'לא נשמר בתצוגה הזו'); showWelcome(); return; }
+  setSave('ok', 'מחובר');
+  let dsReady = false, sessReady = false;
+  const tryBoot = () => {
+    if (!dsReady || !sessReady || bootPicked) return;
+    bootPicked = true;
+    const pick = sessions[0];
+    if (pick && !userActed && (!S || pick.id !== S.id)) { pendingSave = false; loadSession(pick); }
+    else if (S && (pendingSave || userActed)) { pendingSave = false; queueSave(0); }
+    else if (!S) showWelcome();
+  };
+  dsCol().onSnapshot(snap => { datasets = snap.docs.map(x => ({ id: x.id, ...x.data() })); renderDataList(); dsReady = true; if (!S && bootPicked) showWelcome(); tryBoot(); }, e => { console.warn(e); dsReady = true; tryBoot(); });
+  sessCol().onSnapshot(snap => { sessions = snap.docs.map(x => ({ id: x.id, ...x.data() })).filter(x => Array.isArray(x.panes)).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)); renderSessSel(); sessReady = true; tryBoot(); }, e => { console.warn(e); setSave('err', 'אין גישה לשמירה'); sessReady = true; tryBoot(); });
+}
+
+/* ---------- boot ---------- */
+/* the drawing toolbar fills the chart height and wraps into another column only when needed */
+function fitToolbar() {
+  const bar = $('#tools'), ch = $('#charts'); if (!bar || !ch) return;
+  if (getComputedStyle(bar).display !== 'grid') { bar.style.gridTemplateRows = ''; return; }
+  const rows = Math.max(1, Math.floor((ch.getBoundingClientRect().height - 10 + 1) / 31));
+  bar.style.gridTemplateRows = `repeat(${rows}, 30px)`;
+}
+function boot() {
+  try { new ResizeObserver(fitToolbar).observe($('#charts')); } catch (e) {}
+  window.addEventListener('resize', fitToolbar); fitToolbar();
+  if (!LW) { $('#wTitle').textContent = 'ספריית הגרפים לא נטענה. רענן את הדף.'; return; }
+  for (const P of panes) initPane(P);
+  bindUI(); renderSessSel();
+  connect();
+}
+let lastErrAt = 0;
+const reportErr = (msg, where) => { console.error(where, msg); if (Date.now() - lastErrAt < 4000) return; lastErrAt = Date.now(); toast('שגיאה: ' + String(msg).slice(0, 140)); };
+window.addEventListener('error', e => reportErr(e.message + (e.lineno ? ' @' + e.lineno + ':' + e.colno : ''), 'error'));
+window.addEventListener('unhandledrejection', e => reportErr(e.reason && (e.reason.stack || e.reason.message) || e.reason, 'promise'));
+boot();
+})();
+</script>
+
+</body>
+</html>

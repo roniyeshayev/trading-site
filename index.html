@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>המסחר שלי</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans+Hebrew:wght@400;500;600;700&family=Rubik:wght@600;700&display=swap">
+<style>
+/* Entry page: sign in, then two doors (backtest, journal). Same dark desk look as the backtest. */
+:root{--bg:#0B0F17;--panel:#121927;--panel-2:#182133;--line:#253046;--fg:#E7EBF3;--muted:#93A0B7;--accent:#5B8CFF;--accent-ink:#0B0F17;--win:#3CC98F;--loss:#FF6E6E;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:radial-gradient(1200px 600px at 85% -10%,#16213A 0%,transparent 60%),var(--bg);color:var(--fg);font:15px/1.5 "IBM Plex Sans Hebrew","Rubik",system-ui,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:clamp(28px,7vh,72px) 16px 48px}
+.brand{font-family:Rubik,"IBM Plex Sans Hebrew",sans-serif;font-weight:700;font-size:clamp(28px,5vw,40px);letter-spacing:-.01em;margin:0}
+.lead{color:var(--muted);margin:6px 0 0;font-size:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px}
+.auth{max-width:400px;margin:36px auto 0}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--panel-2);border-radius:10px;padding:3px;margin-bottom:18px}
+.seg button{border:0;background:none;color:var(--muted);font:inherit;font-weight:600;padding:8px;border-radius:8px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--fg)}
+.fld{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.fld label{font-size:13px;font-weight:600;color:var(--muted)}
+.fld input{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 12px;color:var(--fg);font:inherit;direction:ltr;text-align:right}
+.fld input:focus{outline:2px solid var(--accent);outline-offset:1px}
+.btn{display:inline-flex;align-items:center;justify-content:center;width:100%;border:0;border-radius:10px;padding:12px;font:inherit;font-weight:700;cursor:pointer;background:var(--accent);color:var(--accent-ink)}
+.btn:disabled{opacity:.6;cursor:default}
+.link{background:none;border:0;color:var(--muted);font:inherit;font-size:13px;cursor:pointer;padding:0;margin-top:12px;text-decoration:underline}
+.msg{font-size:14px;margin-top:12px;min-height:1.2em}
+.msg.err{color:var(--loss)} .msg.ok{color:var(--win)}
+.doors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:32px}
+.door{display:flex;flex-direction:column;gap:10px;text-decoration:none;color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:24px;transition:border-color .15s,transform .15s}
+.door:hover{border-color:var(--accent);transform:translateY(-2px)}
+.door h2{margin:0;font-family:Rubik,"IBM Plex Sans Hebrew",sans-serif;font-size:24px}
+.door p{margin:0;color:var(--muted)}
+.door .go{margin-top:auto;color:var(--accent);font-weight:700}
+.door svg{width:40px;height:40px}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.who{color:var(--muted);font-size:14px}
+.who b{color:var(--fg);font-weight:600;direction:ltr;unicode-bidi:isolate}
+.out{background:none;border:1px solid var(--line);color:var(--muted);border-radius:9px;padding:7px 12px;font:inherit;cursor:pointer}
+@media (max-width:640px){.doors{grid-template-columns:minmax(0,1fr)}}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar">
+    <div>
+      <h1 class="brand" id="brand">המסחר שלי</h1>
+      <p class="lead">בקטסט על נתוני עבר ויומן מסחר, במקום אחד.</p>
+    </div>
+    <div id="whoBox" hidden><span class="who">מחובר כ-<b id="who"></b></span> <button class="out" id="out" type="button">יציאה</button></div>
+  </div>
+
+  <section class="card auth" id="auth" hidden>
+    <div class="seg" role="group" aria-label="סוג כניסה">
+      <button type="button" data-m="in" aria-pressed="true">התחברות</button>
+      <button type="button" data-m="up" aria-pressed="false">הרשמה</button>
+    </div>
+    <form id="form" novalidate>
+      <div class="fld"><label for="email">אימייל</label><input id="email" type="email" autocomplete="email" required></div>
+      <div class="fld" id="pwRow"><label for="pw">סיסמה</label><input id="pw" type="password" autocomplete="current-password" minlength="8" required></div>
+      <button class="btn" id="go" type="submit">התחבר</button>
+    </form>
+    <button class="link" id="forgot" type="button">שכחתי סיסמה</button>
+    <div class="msg" id="msg" role="status"></div>
+  </section>
+
+  <section class="card auth" id="reset" hidden>
+    <form id="resetForm" novalidate>
+      <div class="fld"><label for="pw2">סיסמה חדשה</label><input id="pw2" type="password" autocomplete="new-password" minlength="8" required></div>
+      <button class="btn" type="submit">שמור סיסמה</button>
+    </form>
+    <div class="msg" id="msg2" role="status"></div>
+  </section>
+
+  <nav class="doors" id="doors" hidden aria-label="כלים">
+    <a class="door" href="backtest.html">
+      <svg viewBox="0 0 40 40" fill="none" stroke="#5B8CFF" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M8 30V18M14 30V10M20 30V22M26 30V14M32 30V8"/><path d="M5 34h30" stroke="#253046"/></svg>
+      <h2>בקטסט</h2>
+      <p>ריפליי של MNQ ו-ES זה לצד זה, נרות של דקה מ-2019 ו-15 שניות בתקופות שיש. כלי ציור, פוזיציות וסטטיסטיקה לכל סשן.</p>
+      <span class="go">לבקטסט ←</span>
+    </a>
+    <a class="door" href="journal.html">
+      <svg viewBox="0 0 40 40" fill="none" stroke="#3CC98F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="6" width="24" height="28" rx="3" stroke="#253046"/><path d="M13 26l5-6 4 3 6-8"/></svg>
+      <h2>יומן מסחר</h2>
+      <p>רק עסקאות אמיתיות: רווח והפסד, אחוז הצלחה, עקומת הון ולוח יומי. כולל ימים בלי עסקאות.</p>
+      <span class="go">ליומן ←</span>
+    </a>
+  </nav>
+</div>
+<script>
+(() => {
+  const CFG = window.SITE_CFG, sb = window.supabase.createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+  const $ = (s) => document.querySelector(s);
+  if (CFG.name) { $('#brand').textContent = CFG.name; document.title = CFG.name; }
+  const next = new URLSearchParams(location.search).get('next');
+  const safeNext = next && /^[a-z]+\.html(\?.*)?$/.test(next) ? next : null;
+  let mode = 'in', recovering = false;
+  const say = (t, c = '') => { const m = $('#msg'); m.textContent = t; m.className = 'msg ' + c; };
+  const heb = (e) => {
+    const m = String(e && e.message || e || '');
+    if (/Invalid login/i.test(m)) return 'האימייל או הסיסמה לא נכונים.';
+    if (/Email not confirmed/i.test(m)) return 'צריך לאשר את האימייל קודם. בדוק את תיבת הדואר.';
+    if (/already registered/i.test(m)) return 'האימייל הזה כבר רשום. עבור להתחברות.';
+    if (/Password should be/i.test(m)) return 'הסיסמה קצרה מדי. לפחות 8 תווים.';
+    if (/Database error saving new user|signups? (are )?not allowed|disabled/i.test(m)) return 'האתר פרטי. אי אפשר לפתוח בו משתמשים חדשים.';
+    if (/rate limit/i.test(m)) return 'יותר מדי ניסיונות. נסה שוב בעוד כמה דקות.';
+    return 'משהו השתבש: ' + m;
+  };
+  function setMode(m) {
+    mode = m;
+    document.querySelectorAll('.seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.m === m)));
+    $('#go').textContent = m === 'in' ? 'התחבר' : 'צור משתמש';
+    $('#pw').autocomplete = m === 'in' ? 'current-password' : 'new-password';
+    $('#forgot').hidden = m !== 'in'; say('');
+  }
+  document.querySelectorAll('.seg button').forEach((b) => b.onclick = () => setMode(b.dataset.m));
+  function show(session) {
+    $('#auth').hidden = !!session || recovering; $('#reset').hidden = !recovering;
+    $('#doors').hidden = !session || recovering; $('#whoBox').hidden = !session;
+    if (session) {
+      $('#who').textContent = session.user.email;
+      if (safeNext && !recovering) location.replace(safeNext);
+    }
+  }
+  $('#form').onsubmit = async (e) => {
+    e.preventDefault();
+    const email = $('#email').value.trim(), password = $('#pw').value;
+    if (!email || !/@/.test(email)) return say('הכנס אימייל.', 'err');
+    if (password.length < 8) return say('סיסמה של לפחות 8 תווים.', 'err');
+    $('#go').disabled = true; say(mode === 'in' ? 'מתחבר…' : 'יוצר משתמש…');
+    try {
+      if (mode === 'in') {
+        const { data, error } = await sb.auth.signInWithPassword({ email, password }); if (error) throw error; show(data.session);
+      } else {
+        const { data, error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + location.pathname } }); if (error) throw error;
+        if (data.session) show(data.session); else { say('נשלח אליך מייל אישור. לחץ על הקישור שבו ואז התחבר כאן.', 'ok'); setMode('in'); say('נשלח אליך מייל אישור. לחץ על הקישור שבו ואז התחבר כאן.', 'ok'); }
+      }
+    } catch (err) { say(heb(err), 'err'); }
+    finally { $('#go').disabled = false; }
+  };
+  $('#forgot').onclick = async () => {
+    const email = $('#email').value.trim(); if (!email) return say('כתוב קודם את האימייל שלך.', 'err');
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    say(error ? heb(error) : 'נשלח אליך מייל לאיפוס סיסמה.', error ? 'err' : 'ok');
+  };
+  $('#resetForm').onsubmit = async (e) => {
+    e.preventDefault(); const password = $('#pw2').value; const m = $('#msg2');
+    if (password.length < 8) { m.textContent = 'סיסמה של לפחות 8 תווים.'; m.className = 'msg err'; return; }
+    const { error } = await sb.auth.updateUser({ password });
+    if (error) { m.textContent = heb(error); m.className = 'msg err'; return; }
+    recovering = false; const { data } = await sb.auth.getSession(); show(data.session);
+  };
+  $('#out').onclick = async () => { await sb.auth.signOut(); show(null); };
+  sb.auth.onAuthStateChange((ev, session) => { if (ev === 'PASSWORD_RECOVERY') { recovering = true; show(session); } });
+  sb.auth.getSession().then(({ data }) => show(data.session));
+})();
+</script>
+</body>
+</html>

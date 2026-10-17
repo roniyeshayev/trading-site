@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>העברת נתונים</title>
+<style>
+:root{color-scheme:dark}
+body{margin:0;background:#0B0F17;color:#E7EBF3;font:15px/1.5 "IBM Plex Sans Hebrew",system-ui,sans-serif}
+.wrap{max-width:720px;margin:0 auto;padding:32px 16px}
+h1{font-size:24px;margin:0 0 6px}
+p{color:#93A0B7;margin:0 0 18px}
+.box{background:#121927;border:1px solid #253046;border-radius:14px;padding:18px;margin-bottom:14px}
+label{display:block;font-weight:600;margin-bottom:8px}
+#log{font:13px/1.6 ui-monospace,Menlo,monospace;white-space:pre-wrap;direction:ltr;text-align:left;background:#0B0F17;border:1px solid #253046;border-radius:10px;padding:12px;min-height:80px}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="store.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <h1>העברת נתונים</h1>
+  <p>דף חד-פעמי להעברת הנתונים מהגרסה הקודמת. קבצי נתונים (‎.txt) עולים לאחסון הפרטי, וקובץ docs.json נכנס למסד הנתונים.</p>
+  <div class="box"><label for="files">קבצים</label><input id="files" type="file" multiple></div>
+  <div id="log" aria-live="polite"></div>
+</div>
+<script>
+(() => {
+  const log = (t) => { const el = document.getElementById('log'); el.textContent += t + '\n'; };
+  window.__importDone = 0;
+  document.getElementById('files').addEventListener('change', async (e) => {
+    const { sb, ready } = window.siteStore; await ready; const uid = window.siteStore.uid();
+    for (const f of e.target.files) {
+      try {
+        if (f.name === 'docs.json') {
+          const docs = JSON.parse(await f.text());
+          const rows = docs.map((d) => ({ owner: uid, col: d.col, id: d.id, data: d.data, updated_at: new Date().toISOString() }));
+          const { error } = await sb.from('docs').upsert(rows); if (error) throw error;
+          log('docs: ' + rows.length + ' saved');
+        } else {
+          const id = f.name.replace(/\.txt$/, '');
+          const { error } = await sb.storage.from('assets').upload(uid + '/' + id, f, { contentType: 'text/plain', upsert: true }); if (error) throw error;
+          log(id + ': ' + f.size + ' bytes uploaded');
+        }
+        window.__importDone++;
+      } catch (err) { log('ERROR ' + f.name + ': ' + (err.message || err)); }
+    }
+    log('done');
+  });
+})();
+</script>
+</body>
+</html>
