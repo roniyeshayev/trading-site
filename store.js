@@ -105,15 +105,43 @@
     },
     async delete(id) { await ready; const { error } = await sb.from('blobs').delete().eq('id', id); if (error) throw wrap(error); }
   };
+  /* a file never changes once written (a new version gets a new id), so the browser keeps a copy */
+  const idb = (() => {
+    let p = null;
+    const open = () => p || (p = new Promise((res) => {
+      try {
+        const r = indexedDB.open('site-files', 1);
+        r.onupgradeneeded = () => r.result.createObjectStore('files');
+        r.onsuccess = () => res(r.result); r.onerror = () => res(null); r.onblocked = () => res(null);
+      } catch (e) { res(null); }
+    }));
+    const tx = async (mode, fn) => { const d = await open(); if (!d) return undefined; return new Promise((res) => { try { const t = d.transaction('files', mode); const q = fn(t.objectStore('files')); t.oncomplete = () => res(q && q.result); t.onerror = t.onabort = () => res(undefined); } catch (e) { res(undefined); } }); };
+    return {
+      get: (k) => tx('readonly', (s) => s.get(k)),
+      put: (k, v) => tx('readwrite', (s) => s.put(v, k)),
+      del: (k) => tx('readwrite', (s) => s.delete(k))
+    };
+  })();
+  const fileKey = (id) => (uid || '') + '/' + id;
   /* the pages read their files as fetch('/_blob/<id>') */
   const nativeFetch = window.fetch.bind(window);
   window.fetch = (u, o) => {
     const s = typeof u === 'string' ? u : (u && u.url) || '';
     const k = s.split('/_blob/')[1];
     if (!k) return nativeFetch(u, o);
-    return ready.then(() => sb.from('blobs').select('content').eq('id', decodeURIComponent(k)).maybeSingle())
-      .then(({ data, error }) => (error || !data) ? new Response('', { status: 404 }) : new Response(data.content, { headers: { 'content-type': 'text/plain' } }));
+    const id = decodeURIComponent(k);
+    const ok = (text) => new Response(text, { headers: { 'content-type': 'text/plain' } });
+    return ready.then(async () => {
+      const hit = await idb.get(fileKey(id));
+      if (typeof hit === 'string') return ok(hit);
+      const { data, error } = await sb.from('blobs').select('content').eq('id', id).maybeSingle();
+      if (error || !data) return new Response('', { status: 404 });
+      idb.put(fileKey(id), data.content);
+      return ok(data.content);
+    });
   };
+  const _del = assets.delete;
+  assets.delete = async (id) => { await _del(id); idb.del(fileKey(id)); };
 
   const downloads = {
     async save({ filename, data, mimeType }) {
