@@ -96,6 +96,8 @@ label{font-size:12px;color:var(--muted)}
 .legend i{font-style:normal;color:#C9C9C9;margin-inline-end:1px}
 .legend .vu{color:#FFFFFF} .legend .vd{color:#121212}
 .legend .coarse{font-size:11.5px;color:#1a1205;background:#F5B544;border-radius:4px;padding:0 6px;direction:rtl;pointer-events:auto}
+.legend .coarse.j15{background:#7FB8FF;cursor:pointer;margin-inline-start:6px}
+.legend .coarse.j15:hover{background:#A9CFFF}
 .pbanner{pointer-events:none;position:absolute;top:30px;left:50%;transform:translateX(-50%);z-index:5;background:var(--amber);color:#1a1205;font-size:12px;font-weight:600;padding:4px 11px;border-radius:999px;white-space:nowrap;max-width:calc(100% - 24px);overflow:hidden;text-overflow:ellipsis;direction:rtl}
 .pempty{position:absolute;inset:0;display:grid;place-items:center;z-index:4;padding:20px;text-align:center;color:#1b1b1b;font-size:14px;direction:rtl}
 .pempty div{display:flex;flex-direction:column;gap:10px;align-items:center;max-width:36ch}
@@ -1295,7 +1297,12 @@ function setLegend(P, cd) {
   const el = $('.legend', P.el);
   if (!S || !P.D) { el.innerHTML = ''; return; }
   const c = cfg(P), sym = c.sym || P.D.meta.symbol || '', desc = (INSTR[sym] && INSTR[sym].desc) || sym;
-  const rr = P.cur >= 0 ? P.D.r[P.cur] : 0, coarse = rr > curTF(P) ? `<span class="coarse" title="בתקופה הזו יש רק נרות של ${tfLabel(rr)}, אז הגרף מציג אותם גם בטיים פריים קטן יותר">נתוני ${tfLabel(rr)} בתקופה הזו</span>` : '';
+  const rr = P.cur >= 0 ? P.D.r[P.cur] : 0;
+  let coarse = rr > curTF(P) ? `<span class="coarse" title="בתקופה הזו יש רק נרות של ${tfLabel(rr)}, אז הגרף מציג אותם גם בטיים פריים קטן יותר">נתוני ${tfLabel(rr)} בתקופה הזו</span>` : '';
+  if (coarse && curTF(P) < 60) {   /* seconds chart on a day without seconds data: offer the next period that has them */
+    const nx = ((P.D.meta && P.D.meta.s15) || []).find(r => r[0] > now);
+    if (nx) coarse += `<span class="coarse j15" role="button" tabindex="0" data-t="${nx[0]}" title="TradingView שומר 15s רק בשבועות שלפני כל גלגול חוזה">15s הבא: ${fmtDateInput(nx[0], S.tz).split('-').reverse().join('.')} ←</span>`;
+  }
   const head = `<span class="t">${esc(desc)} · ${tfLabel(curTF(P))} · CME</span>${coarse}`;
   if (P.cur < 0) { el.innerHTML = head; return; }
   const A = agg(P, curTF(P)); let k, prevC;
@@ -1693,6 +1700,9 @@ function normalize(sd0) { const sd = JSON.parse(JSON.stringify(sd0 || {})), b = 
   s.fib = { ...FIB_DEF, ...(sd.fib || {}) }; if (!Array.isArray(s.fib.levels) || !s.fib.levels.length) s.fib.levels = [...FIB_DEF.levels];
   return s; }
 const dsMeta = id => id ? allDs().find(x => x.id === id) : null;
+/* periods that have 15-second bars, kept on the dataset so the chart can point to them */
+function secRanges(d, res = 15) { const out = []; for (let i = 0; i < d.n; i++) if (d.r[i] === res) { const t = d.t[i], L = out[out.length - 1]; if (L && t - L[1] <= 4 * 86400) L[1] = t; else out.push([t, t]); } return out; }
+function mergeRanges(a, b) { const all = [...(a || []), ...(b || [])].map(r => [r[0], r[1]]).sort((x, y) => x[0] - y[0]), out = []; for (const r of all) { const L = out[out.length - 1]; if (L && r[0] <= L[1] + 4 * 86400) L[1] = Math.max(L[1], r[1]); else out.push(r); } return out; }
 /* sources of a dataset: yearly parts (older history, 1m) + the main file (recent data) */
 const DAY = 86400;
 function srcList(meta) {
@@ -1967,6 +1977,7 @@ async function importTexts(items, say) {
     const id = merge ? merge.id : 'd' + uid();
     const d = makeData({ id, symbol: sym }, rows);
     const resLbl = d.ress.map(tfLabel).join(' + '); const meta = { name: `${sym} · ${resLbl}`, symbol: sym, base: d.base, res: d.ress, firstT: d.t[0], lastT: d.t[d.n - 1], bars: d.n, createdAt: merge ? merge.createdAt : Date.now(), updatedAt: Date.now() };
+    meta.s15 = mergeRanges(merge && merge.s15, secRanges(d));
     if (merge && (merge.parts || []).length) {
       const ps = merge.parts, res = new Set([...d.ress, ...ps.flatMap(x => x.res || [60])]);
       Object.assign(meta, { parts: ps, mainFirstT: d.t[0], mainLastT: d.t[d.n - 1], mainBars: d.n, mainRes: d.ress, firstT: Math.min(d.t[0], ...ps.map(x => x.firstT)), lastT: Math.max(d.t[d.n - 1], ...ps.map(x => x.lastT)), bars: d.n + ps.reduce((a, x) => a + (x.bars || 0), 0) });
@@ -2014,6 +2025,7 @@ async function importPart(sym, tag, rows, say) {
     const up = await assets.upload(new Blob([await gzEncode(toCompact(d))], { type: 'text/plain' }), { type: 'text/plain' });
     if (old) { try { await assets.delete(old.assetId); } catch (e) {} srcCache.delete(old.assetId); }
     m.parts = m.parts.filter(x => x.key !== key).concat([{ key, assetId: up.id, firstT: d.t[0], lastT: d.t[d.n - 1], bars: d.n, res: d.ress }]).sort((a, b) => a.firstT - b.firstT);
+    m.s15 = mergeRanges(m.s15, secRanges(d));
   }
   if (m.mainFirstT == null) { m.mainFirstT = meta.firstT; m.mainLastT = meta.lastT; m.mainBars = meta.bars; m.mainRes = meta.res; }
   const fr = fullRange(m), res = new Set([...(m.mainRes || []), ...m.parts.flatMap(x => x.res || [60])]);
@@ -2101,6 +2113,10 @@ function bindUI() {
   $('#bCandle').onclick = candleStep;
   $('#bPlay').onclick = () => setPlay(!playing);
   $('#speed').onchange = () => { if (playing) setPlay(true); };
+  /* legend link: jump to the next period with 15-second bars, at the start of the trading window */
+  const goSec = async (el) => { if (!S) return; const a = +el.dataset.t; if (!isFinite(a)) return; await jumpNow(a); const w = nextWindowNow(now); if (isFinite(w) && w - a < 3 * 86400) jumpNow(w); };
+  document.addEventListener('click', e => { const el = e.target.closest && e.target.closest('.j15'); if (el) { e.preventDefault(); e.stopPropagation(); goSec(el); } }, true);
+  document.addEventListener('keydown', e => { const el = e.target.closest && e.target.closest('.j15'); if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); goSec(el); } });
   $('#bNextWin').onclick = async () => { if (!S) return; const t = await findNext(() => nextWindowNow()); if (!isFinite(t)) toast('אין עוד חלון מסחר בנתונים'); else jumpNow(t); };
   $('#bNextDay').onclick = async () => { if (!S) return; const t = await findNext(() => nextDayNow()); if (!isFinite(t)) toast('זה היום האחרון בנתונים'); else jumpNow(t); };
   $('#bJump').onclick = () => { if (!S) return; const [y, mo, d] = ($('#jDate').value || '').split('-').map(Number), [hh, mi] = ($('#jTime').value || '00:00').split(':').map(Number); if (!y) { toast('בחר תאריך'); return; } jumpNow(localToUTC(S.tz, y, mo - 1, d, hh || 0, mi || 0)); };
